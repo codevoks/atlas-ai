@@ -325,6 +325,11 @@ class ChunkModel(TimestampMixin, Base):
         UniqueConstraint("document_version_id", "ordinal", name="uq_chunks_version_ordinal"),
         Index("ix_chunks_workspace_version", "workspace_id", "document_version_id"),
         Index("ix_chunks_version_hash", "document_version_id", "content_hash"),
+        Index(
+            "ix_chunks_fts_english",
+            text("to_tsvector('english'::regconfig, text)"),
+            postgresql_using="gin",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

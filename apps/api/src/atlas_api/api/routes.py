@@ -29,6 +29,8 @@ from atlas_api.api.schemas import (
     MemberResponse,
     MemberUpdate,
     MeResponse,
+    SearchRequest,
+    SearchResponse,
     SemanticSearchRequest,
     SemanticSearchResponse,
     SourceCreate,
@@ -43,7 +45,7 @@ from atlas_api.api.schemas import (
     WorkspaceResponse,
     WorkspaceUpdate,
 )
-from atlas_api.application.ports import SemanticSearchFilter
+from atlas_api.application.ports import SearchFilter
 from atlas_api.domain.errors import DependencyUnavailableError, ValidationError
 
 router = APIRouter()
@@ -383,6 +385,38 @@ async def list_document_version_chunks(
 
 
 @router.post(
+    "/v1/workspaces/{workspace_id}/search",
+    response_model=SearchResponse,
+    tags=["search"],
+)
+async def search(
+    workspace_id: uuid.UUID,
+    payload: SearchRequest,
+    request: Request,
+    actor: ActorDependency,
+    service: SemanticSearchServiceDependency,
+) -> SearchResponse:
+    records, debug = await service.search(
+        actor=actor,
+        workspace_id=workspace_id,
+        query=payload.query,
+        top_k=payload.top_k,
+        filters=SearchFilter(
+            source_id=payload.filters.source_id,
+            document_id=payload.filters.document_id,
+        ),
+        mode=payload.mode,
+    )
+    return SearchResponse(
+        mode=payload.mode,
+        retrieval_config_version=str(debug["retrieval_config_version"]),
+        items=[EvidenceResponse.from_candidate(item) for item in records],
+        trace_id=request.state.request_id,
+        debug=debug if payload.debug else None,
+    )
+
+
+@router.post(
     "/v1/workspaces/{workspace_id}/search/semantic",
     response_model=SemanticSearchResponse,
     tags=["search"],
@@ -399,7 +433,7 @@ async def semantic_search(
         workspace_id=workspace_id,
         query=payload.query,
         top_k=payload.top_k,
-        filters=SemanticSearchFilter(
+        filters=SearchFilter(
             source_id=payload.filters.source_id,
             document_id=payload.filters.document_id,
         ),

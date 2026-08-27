@@ -31,16 +31,29 @@ export interface Evidence {
   snippet: string;
   distance: number;
   score: number;
-  embedding_set_id: string;
-  embedding_provider: string;
-  embedding_model: string;
-  embedding_model_version: string;
+  retrieval_stage: "semantic" | "lexical" | "hybrid";
+  semantic_score: number | null;
+  lexical_score: number | null;
+  rrf_score: number | null;
+  semantic_rank: number | null;
+  lexical_rank: number | null;
+  embedding_set_id: string | null;
+  embedding_provider: string | null;
+  embedding_model: string | null;
+  embedding_model_version: string | null;
 }
 
 export interface SemanticSearchResult {
   items: Evidence[];
   trace_id: string;
   debug: Record<string, unknown> | null;
+}
+
+export type SearchMode = "semantic" | "lexical" | "hybrid";
+
+export interface SearchResult extends SemanticSearchResult {
+  mode: SearchMode;
+  retrieval_config_version: string;
 }
 
 interface ApiErrorPayload {
@@ -147,5 +160,16 @@ export async function semanticSearch(
   return apiRequest<SemanticSearchResult>(`/v1/workspaces/${workspaceId}/search/semantic`, {
     method: "POST",
     body: JSON.stringify({ query, top_k: 5, debug: true }),
+  });
+}
+
+export async function searchEvidence(
+  workspaceId: string,
+  query: string,
+  mode: SearchMode,
+): Promise<SearchResult> {
+  return apiRequest<SearchResult>(`/v1/workspaces/${workspaceId}/search`, {
+    method: "POST",
+    body: JSON.stringify({ query, mode, top_k: 5, debug: true }),
   });
 }

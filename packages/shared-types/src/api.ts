@@ -265,6 +265,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workspaces/{workspace_id}/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Search */
+        post: operations["search_v1_workspaces__workspace_id__search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workspaces/{workspace_id}/search/semantic": {
         parameters: {
             query?: never;
@@ -583,16 +600,29 @@ export interface components {
             /** Score */
             score: number;
             /**
-             * Embedding Set Id
-             * Format: uuid
+             * Retrieval Stage
+             * @default semantic
+             * @enum {string}
              */
-            embedding_set_id: string;
+            retrieval_stage: "semantic" | "lexical" | "hybrid";
+            /** Semantic Score */
+            semantic_score?: number | null;
+            /** Lexical Score */
+            lexical_score?: number | null;
+            /** Rrf Score */
+            rrf_score?: number | null;
+            /** Semantic Rank */
+            semantic_rank?: number | null;
+            /** Lexical Rank */
+            lexical_rank?: number | null;
+            /** Embedding Set Id */
+            embedding_set_id?: string | null;
             /** Embedding Provider */
-            embedding_provider: string;
+            embedding_provider?: string | null;
             /** Embedding Model */
-            embedding_model: string;
+            embedding_model?: string | null;
             /** Embedding Model Version */
-            embedding_model_version: string;
+            embedding_model_version?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -709,6 +739,43 @@ export interface components {
          * @enum {string}
          */
         Role: "owner" | "admin" | "member" | "viewer";
+        /** SearchRequest */
+        SearchRequest: {
+            /** Query */
+            query: string;
+            /**
+             * Mode
+             * @default hybrid
+             * @enum {string}
+             */
+            mode: "semantic" | "lexical" | "hybrid";
+            /** Top K */
+            top_k?: number | null;
+            filters?: components["schemas"]["SemanticSearchFilters"];
+            /**
+             * Debug
+             * @default false
+             */
+            debug: boolean;
+        };
+        /** SearchResponse */
+        SearchResponse: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "semantic" | "lexical" | "hybrid";
+            /** Retrieval Config Version */
+            retrieval_config_version: string;
+            /** Items */
+            items: components["schemas"]["EvidenceResponse"][];
+            /** Trace Id */
+            trace_id: string;
+            /** Debug */
+            debug?: {
+                [key: string]: unknown;
+            } | null;
+        };
         /** SemanticSearchFilters */
         SemanticSearchFilters: {
             /** Source Id */
@@ -1521,6 +1588,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChunkListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_v1_workspaces__workspace_id__search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResponse"];
                 };
             };
             /** @description Validation Error */

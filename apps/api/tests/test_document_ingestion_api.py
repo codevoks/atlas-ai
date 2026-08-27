@@ -567,6 +567,41 @@ async def test_semantic_search_returns_authorized_evidence(
     assert "Retries recover failed worker crashes" in payload["items"][0]["snippet"]
     assert payload["items"][0]["embedding_set_id"]
 
+    lexical = await client.post(
+        f"/v1/workspaces/{workspace_id}/search",
+        headers=alice_headers,
+        json={"query": "Invoices monthly", "mode": "lexical", "top_k": 3, "debug": True},
+    )
+    assert lexical.status_code == 200, lexical.text
+    lexical_payload = lexical.json()
+    assert lexical_payload["mode"] == "lexical"
+    assert lexical_payload["retrieval_config_version"] == "phase5-postgres-fts-rrf-v1"
+    assert lexical_payload["debug"]["paid_services"] is False
+    assert lexical_payload["debug"]["query_persisted"] is False
+    assert lexical_payload["items"][0]["retrieval_stage"] == "lexical"
+    assert "Invoices are exported monthly" in lexical_payload["items"][0]["snippet"]
+
+    hybrid = await client.post(
+        f"/v1/workspaces/{workspace_id}/search",
+        headers=alice_headers,
+        json={"query": "Invoices monthly", "mode": "hybrid", "top_k": 5, "debug": True},
+    )
+    assert hybrid.status_code == 200, hybrid.text
+    hybrid_payload = hybrid.json()
+    assert hybrid_payload["mode"] == "hybrid"
+    assert hybrid_payload["debug"]["branch_counts"]["semantic"] >= 1
+    assert hybrid_payload["debug"]["branch_counts"]["lexical"] >= 1
+    assert hybrid_payload["debug"]["branch_counts"]["final"] == len(hybrid_payload["items"])
+    assert {item["retrieval_stage"] for item in hybrid_payload["items"]} == {"hybrid"}
+    assert any(item["rrf_score"] is not None for item in hybrid_payload["items"])
+
+    special_chars = await client.post(
+        f"/v1/workspaces/{workspace_id}/search",
+        headers=alice_headers,
+        json={"query": "worker + retry: crash? <script>", "mode": "lexical", "top_k": 3},
+    )
+    assert special_chars.status_code == 200, special_chars.text
+
     backfill = await client.post(
         f"/v1/workspaces/{workspace_id}/embeddings/backfill",
         headers=alice_headers,
@@ -582,6 +617,13 @@ async def test_semantic_search_returns_authorized_evidence(
         json={"query": "worker retry crash recovery", "top_k": 3},
     )
     assert cross_tenant_search.status_code == 404
+
+    cross_tenant_hybrid = await client.post(
+        f"/v1/workspaces/{workspace_id}/search",
+        headers=bob_headers,
+        json={"query": "worker retry crash recovery", "mode": "hybrid", "top_k": 3},
+    )
+    assert cross_tenant_hybrid.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -599,8 +641,8 @@ async def test_semantic_search_rejects_invalid_bounds(
     assert empty_query.status_code == 422
 
     too_many = await client.post(
-        f"/v1/workspaces/{workspace_id}/search/semantic",
+        f"/v1/workspaces/{workspace_id}/search",
         headers=alice_headers,
-        json={"query": "tenant isolation", "top_k": 21},
+        json={"query": "tenant isolation", "mode": "hybrid", "top_k": 21},
     )
     assert too_many.status_code == 422

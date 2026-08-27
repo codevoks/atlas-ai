@@ -24,17 +24,18 @@ import {
   getMembers,
   getSources,
   getWorkspace,
-  semanticSearch,
+  searchEvidence,
+  type SearchMode,
 } from "@/lib/api";
 
 interface WorkspacePageProps {
   params: Promise<{ workspaceId: string }>;
-  searchParams: Promise<{ error?: string; semanticQuery?: string }>;
+  searchParams: Promise<{ error?: string; semanticQuery?: string; searchMode?: string }>;
 }
 
 export default async function WorkspacePage({ params, searchParams }: WorkspacePageProps) {
   const { workspaceId } = await params;
-  const { error, semanticQuery } = await searchParams;
+  const { error, semanticQuery, searchMode } = await searchParams;
   let me;
   let workspace;
   let members;
@@ -83,8 +84,12 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
     previewPairs.map((pair) => [pair.documentId, pair.chunks[0]]),
   );
   const cleanSemanticQuery = semanticQuery ? semanticQuery.split(/\s+/).join(" ").slice(0, 4000) : "";
+  const selectedSearchMode: SearchMode =
+    searchMode === "semantic" || searchMode === "lexical" || searchMode === "hybrid"
+      ? searchMode
+      : "hybrid";
   const semanticResults = cleanSemanticQuery
-    ? await semanticSearch(workspaceId, cleanSemanticQuery)
+    ? await searchEvidence(workspaceId, cleanSemanticQuery, selectedSearchMode)
     : null;
 
   return (
@@ -112,7 +117,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
         <section className="search-panel">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Semantic retrieval</p>
+              <p className="eyebrow">Hybrid retrieval</p>
               <h2>Search grounded evidence</h2>
             </div>
             {semanticResults ? <span className="count">{semanticResults.items.length}</span> : null}
@@ -126,26 +131,38 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
               defaultValue={cleanSemanticQuery}
               placeholder="Search incidents, policies, customer themes..."
             />
+            <label className="sr-only" htmlFor="search-mode">Search mode</label>
+            <select id="search-mode" name="searchMode" defaultValue={selectedSearchMode}>
+              <option value="hybrid">Hybrid</option>
+              <option value="lexical">Lexical</option>
+              <option value="semantic">Semantic</option>
+            </select>
             <button className="button primary" type="submit">Search evidence</button>
           </form>
           {semanticResults ? (
             <div className="search-results">
               <p className="muted">
-                Zero-cost deterministic embedding search · trace {semanticResults.trace_id}
+                {semanticResults.mode} retrieval · {semanticResults.retrieval_config_version} · trace{" "}
+                {semanticResults.trace_id}
               </p>
               {semanticResults.items.map((item) => (
                 <article className="search-result" key={item.chunk_id}>
                   <div>
                     <strong>{item.document_title}</strong>
                     <small>
-                      chunk {item.ordinal} · score {item.score.toFixed(3)} · distance{" "}
-                      {item.distance.toFixed(3)}
+                      chunk {item.ordinal} · {item.retrieval_stage} · score{" "}
+                      {item.score.toFixed(3)}
                     </small>
                   </div>
                   <p>“{item.snippet}”</p>
+                  <small>
+                    semantic rank {item.semantic_rank ?? "—"} · lexical rank{" "}
+                    {item.lexical_rank ?? "—"} · RRF {item.rrf_score?.toFixed(3) ?? "—"}
+                  </small>
                   <small className="mono">
-                    {item.embedding_model}@{item.embedding_model_version} · set{" "}
-                    {item.embedding_set_id}
+                    {item.embedding_model
+                      ? `${item.embedding_model}@${item.embedding_model_version} · set ${item.embedding_set_id}`
+                      : "PostgreSQL full-text search"}
                   </small>
                 </article>
               ))}
@@ -157,7 +174,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
             </div>
           ) : (
             <p className="muted">
-              Upload and ingest text or Markdown, then search the embedded chunks as evidence.
+              Upload and ingest text or Markdown, then search embedded chunks with semantic, lexical, or hybrid retrieval.
             </p>
           )}
         </section>
@@ -233,7 +250,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
             <aside className="side-panel">
               <p className="eyebrow">Direct upload</p><h2>Add a document</h2>
               <p className="muted">
-                Atlas parses UTF-8 text/Markdown, embeds deterministic chunks, and exposes semantic evidence search.
+                Atlas parses UTF-8 text/Markdown, embeds deterministic chunks, and exposes hybrid evidence search.
               </p>
               {sources.length === 0 ? (
                 <p className="alert">Create a source before uploading documents.</p>

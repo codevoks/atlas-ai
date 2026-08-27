@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
 from atlas_api.application.embeddings import (
     DeterministicLocalEmbeddingProvider,
@@ -17,8 +19,8 @@ from atlas_api.application.ports import (
     EmbeddingBackfillResult,
     IngestionJobRecord,
     MemberRecord,
-    SemanticSearchCandidate,
-    SemanticSearchFilter,
+    SearchCandidate,
+    SearchFilter,
     SourceRecord,
     TransactionFactory,
     UploadIntentRecord,
@@ -454,8 +456,9 @@ class SemanticSearchService:
         workspace_id: uuid.UUID,
         query: str,
         top_k: int | None,
-        filters: SemanticSearchFilter,
-    ) -> tuple[list[SemanticSearchCandidate], dict[str, object]]:
+        filters: SearchFilter,
+        mode: Literal["semantic", "lexical", "hybrid"] = "semantic",
+    ) -> tuple[list[SearchCandidate], dict[str, object]]:
         clean_query = " ".join(query.split())
         if not clean_query:
             raise ValidationError("Search query must not be empty.")
@@ -464,47 +467,139 @@ class SemanticSearchService:
         limit = top_k or self._settings.semantic_search_default_top_k
         if not 1 <= limit <= self._settings.semantic_search_max_top_k:
             raise ValidationError("top_k is outside the configured search bounds.")
+        if mode not in {"semantic", "lexical", "hybrid"}:
+            raise ValidationError("Search mode is not supported.")
 
-        batch = await self._provider.embed(
-            [EmbeddingRequest(item_id=uuid.uuid4(), text=clean_query)]
-        )
-        query_vector = batch.items[0].vector
+        batch = None
+        query_vector: list[float] | None = None
+        if mode in {"semantic", "hybrid"}:
+            batch = await self._provider.embed(
+                [EmbeddingRequest(item_id=uuid.uuid4(), text=clean_query)]
+            )
+            query_vector = batch.items[0].vector
         async with self._transactions() as tx:
             membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
             if membership is None:
                 raise ResourceNotFoundError()
             require_permission(membership, Permission.DOCUMENT_READ)
-            embedding_set = await tx.documents.active_embedding_set(
-                workspace_id,
-                provider=batch.provider,
-                model=batch.model,
-                model_version=batch.model_version,
-                dimension=batch.dimension,
-                normalized=batch.normalized,
-                config={
-                    "zero_cost": True,
-                    "storage": "postgres_jsonb_exact_cosine",
-                    "external_provider": False,
-                },
+            candidate_limit = min(
+                self._settings.semantic_search_max_top_k,
+                limit * self._settings.hybrid_search_candidate_multiplier,
             )
-            candidates = await tx.documents.semantic_search(
-                actor=actor,
-                workspace_id=workspace_id,
-                embedding_set_id=embedding_set.id,
-                query_vector=query_vector,
-                top_k=limit,
-                filters=filters,
-            )
+            semantic_candidates: list[SearchCandidate] = []
+            lexical_candidates: list[SearchCandidate] = []
+            embedding_set = None
+            if batch is not None and query_vector is not None:
+                embedding_set = await tx.documents.active_embedding_set(
+                    workspace_id,
+                    provider=batch.provider,
+                    model=batch.model,
+                    model_version=batch.model_version,
+                    dimension=batch.dimension,
+                    normalized=batch.normalized,
+                    config={
+                        "zero_cost": True,
+                        "storage": "postgres_jsonb_exact_cosine",
+                        "external_provider": False,
+                    },
+                )
+                semantic_candidates = await tx.documents.semantic_search(
+                    actor=actor,
+                    workspace_id=workspace_id,
+                    embedding_set_id=embedding_set.id,
+                    query_vector=query_vector,
+                    top_k=candidate_limit if mode == "hybrid" else limit,
+                    filters=filters,
+                )
+            if mode in {"lexical", "hybrid"}:
+                lexical_candidates = await tx.documents.lexical_search(
+                    actor=actor,
+                    workspace_id=workspace_id,
+                    query=clean_query,
+                    top_k=candidate_limit if mode == "hybrid" else limit,
+                    filters=filters,
+                    language=self._settings.lexical_search_language,
+                )
+        if mode == "semantic":
+            candidates = semantic_candidates[:limit]
+        elif mode == "lexical":
+            candidates = lexical_candidates[:limit]
+        else:
+            candidates = self._fuse_rrf(semantic_candidates, lexical_candidates, limit=limit)
         debug = {
-            "provider": batch.provider,
-            "model": batch.model,
-            "model_version": batch.model_version,
-            "dimension": batch.dimension,
-            "normalized": batch.normalized,
+            "mode": mode,
+            "retrieval_config_version": self._settings.retrieval_config_version,
+            "lexical_language": self._settings.lexical_search_language,
+            "rrf_k": self._settings.hybrid_search_rrf_k,
+            "candidate_limit": candidate_limit if mode == "hybrid" else limit,
+            "branch_counts": {
+                "semantic": len(semantic_candidates),
+                "lexical": len(lexical_candidates),
+                "final": len(candidates),
+            },
+            "branch_status": {
+                "semantic": "not_requested" if mode == "lexical" else "ok",
+                "lexical": "not_requested" if mode == "semantic" else "ok",
+            },
+            "embedding_provider": batch.provider if batch is not None else None,
+            "embedding_model": batch.model if batch is not None else None,
+            "embedding_model_version": batch.model_version if batch is not None else None,
+            "embedding_dimension": batch.dimension if batch is not None else None,
+            "embedding_normalized": batch.normalized if batch is not None else None,
+            "embedding_set_id": str(embedding_set.id) if embedding_set is not None else None,
             "vector_store": "postgres_jsonb_exact_cosine",
+            "lexical_store": "postgres_full_text_search",
+            "query_persisted": False,
             "paid_services": False,
         }
         return candidates, debug
+
+    def _fuse_rrf(
+        self,
+        semantic_candidates: list[SearchCandidate],
+        lexical_candidates: list[SearchCandidate],
+        *,
+        limit: int,
+    ) -> list[SearchCandidate]:
+        by_identity: dict[tuple[uuid.UUID, uuid.UUID], SearchCandidate] = {}
+        scores: dict[tuple[uuid.UUID, uuid.UUID], float] = {}
+        semantic_scores: dict[tuple[uuid.UUID, uuid.UUID], float] = {}
+        lexical_scores: dict[tuple[uuid.UUID, uuid.UUID], float] = {}
+        semantic_ranks: dict[tuple[uuid.UUID, uuid.UUID], int] = {}
+        lexical_ranks: dict[tuple[uuid.UUID, uuid.UUID], int] = {}
+        rrf_k = float(self._settings.hybrid_search_rrf_k)
+
+        for rank, candidate in enumerate(semantic_candidates, start=1):
+            identity = (candidate.chunk_id, candidate.document_version_id)
+            by_identity.setdefault(identity, candidate)
+            scores[identity] = scores.get(identity, 0.0) + (1.0 / (rrf_k + rank))
+            semantic_scores[identity] = candidate.semantic_score or candidate.score
+            semantic_ranks[identity] = rank
+        for rank, candidate in enumerate(lexical_candidates, start=1):
+            identity = (candidate.chunk_id, candidate.document_version_id)
+            by_identity.setdefault(identity, candidate)
+            scores[identity] = scores.get(identity, 0.0) + (1.0 / (rrf_k + rank))
+            lexical_scores[identity] = candidate.lexical_score or candidate.score
+            lexical_ranks[identity] = rank
+
+        ranked = sorted(
+            by_identity,
+            key=lambda identity: (-scores[identity], by_identity[identity].chunk_id.hex),
+        )[:limit]
+        return [
+            replace(
+                by_identity[identity],
+                retrieval_stage="hybrid",
+                score=round(scores[identity], 10),
+                distance=round(1.0 - scores[identity], 10),
+                semantic_score=semantic_scores.get(identity),
+                lexical_score=lexical_scores.get(identity),
+                rrf_score=round(scores[identity], 10),
+                semantic_rank=semantic_ranks.get(identity),
+                lexical_rank=lexical_ranks.get(identity),
+            )
+            for identity in ranked
+        ]
 
     async def backfill_missing_embeddings(
         self,

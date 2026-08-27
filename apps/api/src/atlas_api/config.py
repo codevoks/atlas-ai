@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     embedding_max_text_chars: int = 4_000
     semantic_search_default_top_k: int = 5
     semantic_search_max_top_k: int = 20
+    lexical_search_language: str = "english"
+    hybrid_search_rrf_k: int = 60
+    hybrid_search_candidate_multiplier: int = 4
+    retrieval_config_version: str = "phase5-postgres-fts-rrf-v1"
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -76,6 +80,14 @@ class Settings(BaseSettings):
             raise ValueError("SEMANTIC_SEARCH_DEFAULT_TOP_K must be positive")
         if self.semantic_search_max_top_k < self.semantic_search_default_top_k:
             raise ValueError("SEMANTIC_SEARCH_MAX_TOP_K must be at least the default")
+        if not self.lexical_search_language.strip():
+            raise ValueError("LEXICAL_SEARCH_LANGUAGE must not be empty")
+        if self.hybrid_search_rrf_k < 1:
+            raise ValueError("HYBRID_SEARCH_RRF_K must be positive")
+        if self.hybrid_search_candidate_multiplier < 1:
+            raise ValueError("HYBRID_SEARCH_CANDIDATE_MULTIPLIER must be positive")
+        if not self.retrieval_config_version.strip():
+            raise ValueError("RETRIEVAL_CONFIG_VERSION must not be empty")
         return self
 
 

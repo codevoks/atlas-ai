@@ -4,6 +4,7 @@ import hashlib
 import json
 import uuid
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from types import TracebackType
 
@@ -25,8 +26,8 @@ from atlas_api.application.ports import (
     IngestionJobRecord,
     MemberRecord,
     MissingEmbeddingChunkRecord,
-    SemanticSearchCandidate,
-    SemanticSearchFilter,
+    SearchCandidate,
+    SearchFilter,
     SourceRecord,
     Transaction,
     UploadIntentRecord,
@@ -947,8 +948,8 @@ class SqlAlchemyDocumentStore:
         embedding_set_id: uuid.UUID,
         query_vector: list[float],
         top_k: int,
-        filters: SemanticSearchFilter,
-    ) -> list[SemanticSearchCandidate]:
+        filters: SearchFilter,
+    ) -> list[SearchCandidate]:
         statement = (
             select(
                 ChunkEmbeddingModel,
@@ -983,13 +984,13 @@ class SqlAlchemyDocumentStore:
         if filters.document_id is not None:
             statement = statement.where(DocumentModel.id == filters.document_id)
         rows = (await self._session.execute(statement)).all()
-        candidates: list[SemanticSearchCandidate] = []
+        candidates: list[SearchCandidate] = []
         for embedding, chunk, version, document, embedding_set in rows:
             if len(embedding.vector) != embedding_set.dimension:
                 continue
             score = cosine_similarity(query_vector, [float(value) for value in embedding.vector])
             candidates.append(
-                SemanticSearchCandidate(
+                SearchCandidate(
                     chunk_id=chunk.id,
                     document_id=document.id,
                     document_version_id=version.id,
@@ -1003,13 +1004,80 @@ class SqlAlchemyDocumentStore:
                     snippet=self._snippet(chunk.text),
                     distance=round(1.0 - score, 10),
                     score=round(score, 10),
+                    retrieval_stage="semantic",
+                    semantic_score=round(score, 10),
                     embedding_set_id=embedding_set.id,
                     embedding_provider=embedding_set.provider,
                     embedding_model=embedding_set.model,
                     embedding_model_version=embedding_set.model_version,
                 )
             )
-        return sorted(candidates, key=lambda item: (-item.score, item.chunk_id.hex))[:top_k]
+        ranked = sorted(candidates, key=lambda item: (-item.score, item.chunk_id.hex))[:top_k]
+        return [replace(item, semantic_rank=index) for index, item in enumerate(ranked, start=1)]
+
+    async def lexical_search(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        query: str,
+        top_k: int,
+        filters: SearchFilter,
+        language: str,
+    ) -> list[SearchCandidate]:
+        query_expression = func.websearch_to_tsquery(language, query)
+        vector_expression = func.to_tsvector(language, ChunkModel.text)
+        rank_expression = func.ts_rank_cd(vector_expression, query_expression)
+        statement = (
+            select(
+                ChunkModel,
+                DocumentVersionModel,
+                DocumentModel,
+                rank_expression.label("lexical_score"),
+            )
+            .join(
+                DocumentVersionModel,
+                DocumentVersionModel.id == ChunkModel.document_version_id,
+            )
+            .join(DocumentModel, DocumentModel.id == DocumentVersionModel.document_id)
+            .where(
+                ChunkModel.workspace_id == workspace_id,
+                DocumentVersionModel.workspace_id == workspace_id,
+                DocumentVersionModel.status == DocumentVersionStatus.READY.value,
+                DocumentVersionModel.active.is_(True),
+                DocumentModel.workspace_id == workspace_id,
+                DocumentModel.status == DocumentStatus.ACTIVE.value,
+                vector_expression.op("@@")(query_expression),
+            )
+            .order_by(rank_expression.desc(), ChunkModel.id.asc())
+            .limit(top_k)
+        )
+        if filters.source_id is not None:
+            statement = statement.where(DocumentModel.source_id == filters.source_id)
+        if filters.document_id is not None:
+            statement = statement.where(DocumentModel.id == filters.document_id)
+        rows = (await self._session.execute(statement)).all()
+        return [
+            SearchCandidate(
+                chunk_id=chunk.id,
+                document_id=document.id,
+                document_version_id=version.id,
+                source_id=document.source_id,
+                document_title=document.title,
+                ordinal=chunk.ordinal,
+                heading=chunk.heading,
+                block_type=chunk.block_type,
+                start_char=chunk.start_char,
+                end_char=chunk.end_char,
+                snippet=self._snippet(chunk.text),
+                distance=round(1.0 - float(lexical_score), 10),
+                score=round(float(lexical_score), 10),
+                retrieval_stage="lexical",
+                lexical_score=round(float(lexical_score), 10),
+                lexical_rank=index,
+            )
+            for index, (chunk, version, document, lexical_score) in enumerate(rows, start=1)
+        ]
 
     async def embedding_coverage(
         self, workspace_id: uuid.UUID, embedding_set_id: uuid.UUID

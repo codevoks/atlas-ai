@@ -186,7 +186,7 @@ stateDiagram-v2
 
 Phase 2 uses API-hosted local signed upload handling for development. The adapter boundary preserves the production design: later S3-compatible storage replaces the local adapter without changing the document or ingestion state model.
 
-## 1C. Phase 4 implemented parsing, chunking, embedding, and semantic retrieval slice
+## 1C. Phase 5 implemented parsing, chunking, embedding, and hybrid retrieval slice
 
 ```mermaid
 sequenceDiagram
@@ -234,7 +234,32 @@ flowchart LR
     Ready --> Search
 ```
 
-Phase 4 publishes chunks and embeddings only inside the final database transaction. Partial parser/chunker/embedding output is never visible as a ready document version. Semantic search returns evidence only; answer generation remains deferred.
+Phase 5 publishes chunks and embeddings only inside the final database transaction. Partial parser/chunker/embedding output is never visible as a ready document version. Semantic, lexical, and hybrid search return evidence only; answer generation remains deferred.
+
+## 1D. Phase 5 hybrid retrieval flow
+
+```mermaid
+flowchart LR
+    Query[Validated query\nmode and safe filters]
+    Auth[Workspace membership\nand document:read policy]
+    Semantic[Semantic branch\nlocal deterministic embedding\nexact cosine over ready embeddings]
+    Lexical[Lexical branch\nPostgreSQL FTS\nGIN expression index]
+    Policy[Identical tenant/status/filter predicates\ninside each branch]
+    Fuse[RRF fusion\nchunk + version dedup]
+    Evidence[Typed evidence\nsnippet scores ranks trace]
+    Debug[Redacted diagnostics\nconfig branch counts ranks]
+
+    Query --> Auth
+    Auth --> Policy
+    Policy --> Semantic
+    Policy --> Lexical
+    Semantic --> Fuse
+    Lexical --> Fuse
+    Fuse --> Evidence
+    Fuse --> Debug
+```
+
+Hybrid retrieval keeps lexical and semantic candidate generation as separate ranked lists, then fuses ranks with RRF rather than mixing raw branch scores. This makes exact-term/entity matches and semantic paraphrase matches visible through one deterministic evidence API while preserving branch provenance for debugging.
 
 ## 2. Durable ingestion and atomic publication
 

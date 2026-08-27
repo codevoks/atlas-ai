@@ -148,3 +148,21 @@ Residual risks and deferrals:
 - Phase 4 uses an exact PostgreSQL JSONB vector baseline for the zero-cost path. pgvector ANN index adoption is deferred until the local stack deliberately includes the extension and query-plan/recall/latency evidence justifies it.
 - Embedding inversion/linkability remains a privacy risk. Raw vector export, tenant analytics, retention policy, and provider data-retention policy require later dedicated controls before hosted providers are enabled.
 - Search is semantic-only evidence retrieval. Lexical/hybrid retrieval, reranking, grounded generation, citation validation, and adversarial prompt-injection evaluation remain deferred to later phases.
+
+## Phase 5 implementation security review
+
+Implemented controls:
+
+- The unified search endpoint authorizes `document:read` against active workspace membership before candidate generation.
+- Semantic and lexical branches both apply workspace, active-document, ready-active-version, and allowlisted source/document filters before ranking candidates.
+- PostgreSQL lexical search uses parameterized `websearch_to_tsquery` and a fixed allowlisted language configuration.
+- Hybrid search deduplicates by chunk plus document-version identity and never relaxes a branch policy during fusion.
+- Search diagnostics are bounded and redacted: they expose mode, config version, branch counts/status, ranks/scores, and provider/config provenance, but they do not persist or echo full user queries.
+- Special-character lexical queries are handled safely, and invalid bounds/modes fail through the typed request schema.
+- The zero-cost path uses local PostgreSQL FTS, deterministic embeddings, and no paid SaaS, cloud, hosted search, or model API calls.
+
+Residual risks and deferrals:
+
+- Phase 5 executes semantic and lexical retrieval in the existing API transaction path. True branch timeouts, cancellation propagation, and parallel orchestration are represented by interfaces/configuration but require additional infrastructure before high-latency providers are enabled.
+- PostgreSQL FTS uses an English analyzer only. Multilingual analyzers, synonyms, phrase tuning, entity-aware search, OpenSearch, caching, and learned/weighted fusion remain deferred until evaluated.
+- Retrieval debug metadata is safe for local development, but any production debug access should be role-gated and retention-controlled before exposing tenant-admin diagnostics broadly.

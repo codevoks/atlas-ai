@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from types import TracebackType
-from typing import Protocol
+from typing import Literal, Protocol
 
 from atlas_api.domain.models import (
     Actor,
@@ -185,13 +185,13 @@ class ChunkEmbeddingRecord:
 
 
 @dataclass(frozen=True, slots=True)
-class SemanticSearchFilter:
+class SearchFilter:
     source_id: uuid.UUID | None = None
     document_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class SemanticSearchCandidate:
+class SearchCandidate:
     chunk_id: uuid.UUID
     document_id: uuid.UUID
     document_version_id: uuid.UUID
@@ -205,10 +205,20 @@ class SemanticSearchCandidate:
     snippet: str
     distance: float
     score: float
-    embedding_set_id: uuid.UUID
-    embedding_provider: str
-    embedding_model: str
-    embedding_model_version: str
+    retrieval_stage: Literal["semantic", "lexical", "hybrid"]
+    semantic_score: float | None = None
+    lexical_score: float | None = None
+    rrf_score: float | None = None
+    semantic_rank: int | None = None
+    lexical_rank: int | None = None
+    embedding_set_id: uuid.UUID | None = None
+    embedding_provider: str | None = None
+    embedding_model: str | None = None
+    embedding_model_version: str | None = None
+
+
+SemanticSearchFilter = SearchFilter
+SemanticSearchCandidate = SearchCandidate
 
 
 @dataclass(frozen=True, slots=True)
@@ -387,8 +397,19 @@ class DocumentStore(Protocol):
         embedding_set_id: uuid.UUID,
         query_vector: list[float],
         top_k: int,
-        filters: SemanticSearchFilter,
-    ) -> list[SemanticSearchCandidate]: ...
+        filters: SearchFilter,
+    ) -> list[SearchCandidate]: ...
+
+    async def lexical_search(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        query: str,
+        top_k: int,
+        filters: SearchFilter,
+        language: str,
+    ) -> list[SearchCandidate]: ...
 
     async def embedding_coverage(
         self, workspace_id: uuid.UUID, embedding_set_id: uuid.UUID

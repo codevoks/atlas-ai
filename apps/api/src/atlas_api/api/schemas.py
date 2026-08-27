@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -12,7 +12,7 @@ from atlas_api.application.ports import (
     EmbeddingBackfillResult,
     IngestionJobRecord,
     MemberRecord,
-    SemanticSearchCandidate,
+    SearchCandidate,
     SourceRecord,
     UploadIntentRecord,
     WorkspaceRecord,
@@ -366,6 +366,14 @@ class SemanticSearchFilters(BaseModel):
     document_id: uuid.UUID | None = None
 
 
+class SearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=4_000)
+    mode: Literal["semantic", "lexical", "hybrid"] = "hybrid"
+    top_k: int | None = Field(default=None, ge=1, le=20)
+    filters: SemanticSearchFilters = Field(default_factory=SemanticSearchFilters)
+    debug: bool = False
+
+
 class SemanticSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=4_000)
     top_k: int | None = Field(default=None, ge=1, le=20)
@@ -387,13 +395,19 @@ class EvidenceResponse(BaseModel):
     snippet: str
     distance: float
     score: float
-    embedding_set_id: uuid.UUID
-    embedding_provider: str
-    embedding_model: str
-    embedding_model_version: str
+    retrieval_stage: Literal["semantic", "lexical", "hybrid"] = "semantic"
+    semantic_score: float | None = None
+    lexical_score: float | None = None
+    rrf_score: float | None = None
+    semantic_rank: int | None = None
+    lexical_rank: int | None = None
+    embedding_set_id: uuid.UUID | None = None
+    embedding_provider: str | None = None
+    embedding_model: str | None = None
+    embedding_model_version: str | None = None
 
     @classmethod
-    def from_candidate(cls, candidate: SemanticSearchCandidate) -> EvidenceResponse:
+    def from_candidate(cls, candidate: SearchCandidate) -> EvidenceResponse:
         return cls(
             chunk_id=candidate.chunk_id,
             document_id=candidate.document_id,
@@ -408,11 +422,25 @@ class EvidenceResponse(BaseModel):
             snippet=candidate.snippet,
             distance=candidate.distance,
             score=candidate.score,
+            retrieval_stage=candidate.retrieval_stage,
+            semantic_score=candidate.semantic_score,
+            lexical_score=candidate.lexical_score,
+            rrf_score=candidate.rrf_score,
+            semantic_rank=candidate.semantic_rank,
+            lexical_rank=candidate.lexical_rank,
             embedding_set_id=candidate.embedding_set_id,
             embedding_provider=candidate.embedding_provider,
             embedding_model=candidate.embedding_model,
             embedding_model_version=candidate.embedding_model_version,
         )
+
+
+class SearchResponse(BaseModel):
+    mode: Literal["semantic", "lexical", "hybrid"]
+    retrieval_config_version: str
+    items: list[EvidenceResponse]
+    trace_id: str
+    debug: dict[str, object] | None = None
 
 
 class SemanticSearchResponse(BaseModel):
