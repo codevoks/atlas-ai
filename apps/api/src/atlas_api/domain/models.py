@@ -25,6 +25,62 @@ class Permission(StrEnum):
     MEMBER_UPDATE = "member:update"
     MEMBER_REMOVE = "member:remove"
     AUDIT_READ = "audit:read"
+    SOURCE_READ = "source:read"
+    SOURCE_CREATE = "source:create"
+    DOCUMENT_READ = "document:read"
+    DOCUMENT_CREATE = "document:create"
+    DOCUMENT_DELETE = "document:delete"
+    INGESTION_JOB_READ = "ingestion_job:read"
+    INGESTION_JOB_MANAGE = "ingestion_job:manage"
+
+
+class SourceType(StrEnum):
+    UPLOAD = "upload"
+
+
+class SourceStatus(StrEnum):
+    ACTIVE = "active"
+    DISABLED = "disabled"
+
+
+class DocumentStatus(StrEnum):
+    ACTIVE = "active"
+    DELETED = "deleted"
+
+
+class DocumentVersionStatus(StrEnum):
+    UPLOAD_PENDING = "upload_pending"
+    INGESTION_PENDING = "ingestion_pending"
+    VERIFYING = "verifying"
+    READY = "ready"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class UploadIntentStatus(StrEnum):
+    PENDING = "pending"
+    UPLOADED = "uploaded"
+    FINALIZED = "finalized"
+    EXPIRED = "expired"
+
+
+class IngestionJobState(StrEnum):
+    PENDING = "pending"
+    CLAIMED = "claimed"
+    VERIFYING = "verifying"
+    PUBLISHING = "publishing"
+    SUCCEEDED = "succeeded"
+    RETRY_WAIT = "retry_wait"
+    CANCEL_REQUESTED = "cancel_requested"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
+class RetryClass(StrEnum):
+    TRANSIENT = "transient"
+    PERMANENT = "permanent"
+    INTEGRITY = "integrity"
+    CANCELLED = "cancelled"
 
 
 @dataclass(frozen=True, slots=True)

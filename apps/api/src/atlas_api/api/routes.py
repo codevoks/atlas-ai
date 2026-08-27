@@ -6,14 +6,30 @@ from typing import Annotated
 from fastapi import APIRouter, Header, Request, Response, status
 from sqlalchemy import text
 
-from atlas_api.api.dependencies import ActorDependency, WorkspaceServiceDependency
+from atlas_api.api.dependencies import (
+    ActorDependency,
+    DocumentServiceDependency,
+    WorkspaceServiceDependency,
+)
 from atlas_api.api.schemas import (
+    DocumentListResponse,
+    DocumentResponse,
+    DocumentVersionListResponse,
+    DocumentVersionResponse,
     HealthResponse,
+    IngestionJobResponse,
     MemberCreate,
     MemberListResponse,
     MemberResponse,
     MemberUpdate,
     MeResponse,
+    SourceCreate,
+    SourceListResponse,
+    SourceResponse,
+    UploadFinalize,
+    UploadFinalizeResponse,
+    UploadIntentCreate,
+    UploadIntentResponse,
     WorkspaceCreate,
     WorkspaceListResponse,
     WorkspaceResponse,
@@ -173,3 +189,233 @@ async def remove_member(
 ) -> Response:
     await service.remove_member(actor, workspace_id, user_id, request.state.request_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/sources",
+    response_model=SourceListResponse,
+    tags=["documents"],
+)
+async def list_sources(
+    workspace_id: uuid.UUID,
+    actor: ActorDependency,
+    service: DocumentServiceDependency,
+) -> SourceListResponse:
+    records = await service.list_sources(actor, workspace_id)
+    return SourceListResponse(items=[SourceResponse.from_record(item) for item in records])
+
+
+@router.post(
+    "/v1/workspaces/{workspace_id}/sources",
+    response_model=SourceResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["documents"],
+)
+async def create_source(
+    workspace_id: uuid.UUID,
+    payload: SourceCreate,
+    request: Request,
+    actor: ActorDependency,
+    service: DocumentServiceDependency,
+) -> SourceResponse:
+    record = await service.create_source(
+        actor, workspace_id, payload.name, request.state.request_id
+    )
+    return SourceResponse.from_record(record)
+
+
+@router.post(
+    "/v1/workspaces/{workspace_id}/uploads",
+    response_model=UploadIntentResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["documents"],
+)
+async def create_upload_intent(
+    workspace_id: uuid.UUID,
+    payload: UploadIntentCreate,
+    request: Request,
+    actor: ActorDependency,
+    service: DocumentServiceDependency,
+) -> UploadIntentResponse:
+    base_url = str(request.base_url).rstrip("/")
+    record = await service.create_upload_intent(
+        actor=actor,
+        workspace_id=workspace_id,
+        original_filename=payload.original_filename,
+        media_type=payload.media_type,
+        byte_size=payload.byte_size,
+        digest_sha256=payload.digest_sha256,
+        base_url=base_url,
+        request_id=request.state.request_id,
+    )
+    return UploadIntentResponse.from_record(record)
+
+
+@router.put(
+    "/v1/uploads/{upload_intent_id}/content",
+    response_model=UploadIntentResponse,
+    tags=["documents"],
+)
+async def upload_content(
+    upload_intent_id: uuid.UUID,
+    request: Request,
+    token: str,
+    service: DocumentServiceDependency,
+) -> UploadIntentResponse:
+    media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    body = await request.body()
+    record = await service.receive_upload_content(
+        upload_intent_id=upload_intent_id,
+        token=token,
+        body=body,
+        media_type=media_type,
+    )
+    return UploadIntentResponse.from_record(record)
+
+
+@router.post(
+    "/v1/workspaces/{workspace_id}/uploads/{upload_intent_id}/finalize",
+    response_model=UploadFinalizeResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["documents"],
+)
+async def finalize_upload(
+    workspace_id: uuid.UUID,
+    upload_intent_id: uuid.UUID,
+    payload: UploadFinalize,
+    request: Request,
+    response: Response,
+    actor: ActorDependency,
+    service: DocumentServiceDependency,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> UploadFinalizeResponse:
+    if idempotency_key is None or not (8 <= len(idempotency_key) <= 128):
+        raise ValidationError("Idempotency-Key must contain between 8 and 128 characters.")
+    document, version, job, replayed = await service.finalize_upload(
+        actor=actor,
+        workspace_id=workspace_id,
+        source_id=payload.source_id,
+        upload_intent_id=upload_intent_id,
+        title=payload.title,
+        idempotency_key=idempotency_key,
+        request_id=request.state.request_id,
+    )
+    if replayed:
+        response.status_code = status.HTTP_200_OK
+        response.headers["Idempotent-Replayed"] = "true"
+    return UploadFinalizeResponse(
+        document=DocumentResponse.from_record(document),
+        document_version=DocumentVersionResponse.from_record(version),
+        ingestion_job=IngestionJobResponse.from_record(job),
+    )
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/documents",
+    response_model=DocumentListResponse,
+    tags=["documents"],
+)
+async def list_documents(
+    workspace_id: uuid.UUID,
+    actor: ActorDependency,
+    service: DocumentServiceDependency,
+) -> DocumentListResponse:
+    records = await service.list_documents(actor, workspace_id)
+    return DocumentListResponse(items=[DocumentResponse.from_record(item) for item in records])
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/documents/{document_id}",
+    response_model=DocumentResponse,
+    tags=["documents"],
+)
+async def get_document(
+    workspace_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: ActorDependency,
+    service: DocumentServiceDependency,
+) -> DocumentResponse:
+    return DocumentResponse.from_record(
+        await service.get_document(actor, workspace_id, document_id)
+    )
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/documents/{document_id}/versions",
+    response_model=DocumentVersionListResponse,
+    tags=["documents"],
+)
+async def list_document_versions(
+    workspace_id: uuid.UUID,
+    document_id: uuid.UUID,
+    actor: ActorDependency,
+    service: DocumentServiceDependency,
+) -> DocumentVersionListResponse:
+    records = await service.list_versions(actor, workspace_id, document_id)
+    return DocumentVersionListResponse(
+        items=[DocumentVersionResponse.from_record(item) for item in records]
+    )
+
+
+@router.delete(
+    "/v1/workspaces/{workspace_id}/documents/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["documents"],
+)
+async def delete_document(
+    workspace_id: uuid.UUID,
+    document_id: uuid.UUID,
+    request: Request,
+    actor: ActorDependency,
+    service: DocumentServiceDependency,
+) -> Response:
+    await service.delete_document(actor, workspace_id, document_id, request.state.request_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/ingestion-jobs/{job_id}",
+    response_model=IngestionJobResponse,
+    tags=["documents"],
+)
+async def get_ingestion_job(
+    workspace_id: uuid.UUID,
+    job_id: uuid.UUID,
+    actor: ActorDependency,
+    service: DocumentServiceDependency,
+) -> IngestionJobResponse:
+    return IngestionJobResponse.from_record(await service.get_job(actor, workspace_id, job_id))
+
+
+@router.post(
+    "/v1/workspaces/{workspace_id}/ingestion-jobs/{job_id}/cancel",
+    response_model=IngestionJobResponse,
+    tags=["documents"],
+)
+async def cancel_ingestion_job(
+    workspace_id: uuid.UUID,
+    job_id: uuid.UUID,
+    request: Request,
+    actor: ActorDependency,
+    service: DocumentServiceDependency,
+) -> IngestionJobResponse:
+    return IngestionJobResponse.from_record(
+        await service.cancel_job(actor, workspace_id, job_id, request.state.request_id)
+    )
+
+
+@router.post(
+    "/v1/workspaces/{workspace_id}/ingestion-jobs/{job_id}/retry",
+    response_model=IngestionJobResponse,
+    tags=["documents"],
+)
+async def retry_ingestion_job(
+    workspace_id: uuid.UUID,
+    job_id: uuid.UUID,
+    request: Request,
+    actor: ActorDependency,
+    service: DocumentServiceDependency,
+) -> IngestionJobResponse:
+    return IngestionJobResponse.from_record(
+        await service.retry_job(actor, workspace_id, job_id, request.state.request_id)
+    )

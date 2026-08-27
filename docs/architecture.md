@@ -61,11 +61,13 @@ Trust boundaries exist at the browser, service ingress, tenant authorization lay
 
 Logical code boundaries inside API/worker are `domain`, `application`, `infrastructure`, `retrieval`, `ai`, `api`, and worker entrypoints. Imports point inward: domain has no framework/provider dependencies; application depends on ports; infrastructure implements ports; routes and job consumers adapt external input.
 
-## Current implemented baseline after Phase 1
+## Current implemented baseline after Phase 2
 
-The repository currently implements only the control-plane foundation: `apps/web`, `apps/api`, `apps/worker`, `packages/config`, and `packages/shared-types`. The API owns identity resolution, workspace use cases, RBAC policy, SQLAlchemy persistence, Alembic migrations, audit events, and OpenAPI export. The web app owns local sign-in UX, server-side BFF calls, workspace/member screens, Tailwind CSS styling, and security headers. The worker exposes truthful health/readiness endpoints but performs no durable background work until Phase 2.
+The repository currently implements the control-plane foundation plus the storage and ingestion metadata slice: `apps/web`, `apps/api`, `apps/worker`, `packages/config`, and `packages/shared-types`. The API owns identity resolution, workspace use cases, RBAC policy, SQLAlchemy persistence, Alembic migrations, audit events, source/document/upload contracts, signed local upload handling, and OpenAPI export. The web app owns local sign-in UX, server-side BFF calls, workspace/member/source/document screens, direct-upload orchestration, Tailwind CSS styling, and security headers. The worker owns deterministic ingestion-job claiming, lease/version checks, object integrity verification, and metadata-only publication.
 
-The implemented persistent tables are `users`, `workspaces`, `memberships`, `audit_events`, and `idempotency_records`. No document, ingestion, retrieval, AI, evaluation, object-storage, Redis, or queue behavior is implemented yet.
+The implemented persistent tables are `users`, `workspaces`, `memberships`, `audit_events`, `idempotency_records`, `sources`, `upload_intents`, `documents`, `document_versions`, `ingestion_jobs`, and `job_events`. Local development uses a filesystem-backed object-store adapter with tenant-prefixed keys and HMAC-signed upload URLs; production object storage remains behind the same adapter boundary.
+
+Phase 2 intentionally publishes document metadata only. Parsing, malware scanning, chunking, embeddings, retrieval, generation, evaluations, Redis-backed coordination, and external object-storage credentials remain deferred to later phases.
 
 ## Canonical data model
 
@@ -97,9 +99,9 @@ Database invariants include composite tenant-aware foreign keys where practical,
 
 1. API authorizes `document:create`, validates declared file constraints, and creates an upload intent with a tenant-scoped object key.
 2. Client uploads via short-lived signed URL. API finalizes by verifying object metadata/digest and creates the document version plus durable job in one transaction.
-3. A transactional outbox (or a database-backed job claim in the first implementation) makes work visible without a dual-write gap.
-4. Worker claims with a lease and runs explicit idempotent stages: verify → malware/type policy → parse → normalize → chunk → embed → publish.
-5. Stage outputs are versioned. Retries reuse or safely replace deterministic outputs. Publication is a short transaction; failed versions never enter retrieval.
+3. In Phase 2, finalization creates the document, immutable document version, ingestion job, job event, audit event, and idempotency record in one PostgreSQL transaction.
+4. The worker claims jobs with `FOR UPDATE SKIP LOCKED`, a lease owner, heartbeat timestamp, attempt counters, expected version, and bounded retry states.
+5. Phase 2 worker execution verifies stored object size/digest and atomically publishes the document version as metadata-only. Later phases expand the state machine with malware/type policy, parsing, normalization, chunking, and embedding stages.
 6. Cancellation is cooperative. Dead-letter state preserves diagnosable error metadata and a safe replay path.
 
 ### Search

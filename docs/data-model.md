@@ -45,6 +45,15 @@ Workspace --< AuditEvent
 - At most one version per document is active/published. A version can be published only after all configured mandatory stages succeed.
 - Deletion prevents new reads immediately from the source of truth and propagates tombstones to derived indexes/caches asynchronously.
 
+Phase 2 implemented tables:
+
+- `sources`: workspace-scoped upload source registry with active/disabled state.
+- `upload_intents`: tenant-prefixed object key, creator, declared filename, media type, byte size, digest, expiry, lifecycle status, and finalized document-version reference.
+- `documents`: logical workspace document identity tied to a source and creator.
+- `document_versions`: immutable object reference, digest, media type, size, version number, active flag, parser configuration placeholder, and ingestion status.
+- `ingestion_jobs`: durable metadata-ingestion state, lease owner/expiry, heartbeat, progress, bounded attempts, cancellation flag, idempotency key, retry timing, and safe error fields.
+- `job_events`: append-only safe state-transition history.
+
 ### Jobs
 
 Initial ingestion states:
@@ -61,6 +70,17 @@ Any active state -> FAILED
 Transitions require expected state/version and a valid lease when worker-owned. `attempts`, stage attempts, `next_attempt_at`, lease owner/expiry, heartbeat, progress, safe error class/code, and cancellation are authoritative. A stable command/idempotency key has one logical result. Retry exhaustion produces a terminal diagnosable state; replay is a new audited command or controlled reset with clear lineage.
 
 The durable record and its outbox/job visibility are created in one database transaction. If a transport is later introduced, delivery is a hint to claim authoritative work, not the work itself.
+
+Phase 2 implements the prefix of this state machine:
+
+```text
+PENDING -> CLAIMED -> VERIFYING -> PUBLISHING -> SUCCEEDED
+PENDING|CLAIMED -> CANCEL_REQUESTED -> CANCELLED
+VERIFYING -> FAILED
+FAILED|RETRY_WAIT -> PENDING by authorized retry
+```
+
+Parsing, normalization, chunking, embedding, and stage-level checkpoints are intentionally deferred until the later ingestion/retrieval phases.
 
 ### Chunks and embeddings
 
@@ -96,4 +116,3 @@ Every repository query starts with workspace scope. Global operator queries use 
 ## Migration rules
 
 Use expand/migrate/contract for deployed schemas. Backfills are bounded, resumable jobs. New parser/chunker/embedding/search configurations create parallel versioned data. Promote after coverage and evaluation; retain rollback until expiry criteria. Derived projections expose reconciliation cursor/count/checksum or sampled consistency evidence.
-

@@ -95,6 +95,61 @@ flowchart LR
 
 Phase 1 proves the control-plane boundary before any document, retrieval, or AI state exists. Browser-supplied workspace IDs never grant authority by themselves; membership lookup plus policy decides access.
 
+## 1B. Phase 2 implemented storage and metadata-ingestion slice
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant W as Next.js web/BFF
+    participant A as FastAPI API
+    participant O as Local object-store adapter
+    participant D as PostgreSQL
+    participant K as Worker
+
+    U->>W: Create source and choose file
+    W->>W: Compute SHA-256 digest server-side
+    W->>A: POST /v1/workspaces/{id}/uploads
+    A->>D: Authorize document:create and persist upload intent
+    A-->>W: HMAC signed PUT URL and tenant-prefixed object key
+    W->>A: PUT /v1/uploads/{intent}/content?token=...
+    A->>A: Verify token, expiry, size, media type, digest
+    A->>O: Store immutable bytes under workspace prefix
+    A->>D: Mark upload intent uploaded
+    W->>A: POST finalize + Idempotency-Key
+    A->>O: Verify stored object metadata
+    A->>D: Transaction: document, version, job, events, idempotency
+    A-->>W: Document, version, and pending job status
+    K->>D: Claim job with lease and expected version
+    K->>O: HEAD object and verify digest/size
+    K->>D: Publish document version atomically as READY
+    W->>A: Poll document/job status
+    A->>D: Read authoritative status
+```
+
+```mermaid
+stateDiagram-v2
+    [*] --> Pending: upload intent created
+    Pending --> Uploaded: signed PUT verified
+    Uploaded --> Finalized: document version and job created
+    Pending --> Expired: expiry reached before upload/finalize
+
+    state "Ingestion job" as Job {
+        [*] --> JobPending
+        JobPending --> Claimed: lease acquired
+        Claimed --> Verifying: expected version matched
+        Verifying --> Publishing: object digest and size matched
+        Publishing --> Succeeded: version marked READY and active
+        Verifying --> Failed: missing or corrupt object
+        JobPending --> CancelRequested: user cancel
+        Claimed --> CancelRequested: user cancel
+        CancelRequested --> Cancelled: cooperative worker stop
+        Failed --> JobPending: authorized retry
+    }
+```
+
+Phase 2 uses API-hosted local signed upload handling for development. The adapter boundary preserves the production design: later S3-compatible storage replaces the local adapter without changing the document or ingestion state model.
+
 ## 2. Durable ingestion and atomic publication
 
 ```mermaid

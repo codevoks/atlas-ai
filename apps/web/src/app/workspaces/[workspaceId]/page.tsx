@@ -3,13 +3,26 @@ import { notFound, redirect } from "next/navigation";
 
 import {
   addMemberAction,
+  cancelIngestionJobAction,
+  createSourceAction,
+  deleteDocumentAction,
   removeMemberAction,
   renameWorkspaceAction,
+  retryIngestionJobAction,
   signOutAction,
   updateMemberAction,
+  uploadDocumentAction,
 } from "@/app/actions";
 import { SubmitButton } from "@/components/submit-button";
-import { AtlasApiError, getMe, getMembers, getWorkspace } from "@/lib/api";
+import {
+  AtlasApiError,
+  getDocuments,
+  getIngestionJob,
+  getMe,
+  getMembers,
+  getSources,
+  getWorkspace,
+} from "@/lib/api";
 
 interface WorkspacePageProps {
   params: Promise<{ workspaceId: string }>;
@@ -22,11 +35,15 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
   let me;
   let workspace;
   let members;
+  let sources;
+  let documents;
   try {
-    [me, workspace, members] = await Promise.all([
+    [me, workspace, members, sources, documents] = await Promise.all([
       getMe(),
       getWorkspace(workspaceId),
       getMembers(workspaceId),
+      getSources(workspaceId),
+      getDocuments(workspaceId),
     ]);
   } catch (requestError) {
     if (requestError instanceof AtlasApiError && requestError.status === 401) redirect("/sign-in");
@@ -35,6 +52,12 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
   }
 
   const canAdminister = workspace.role === "owner" || workspace.role === "admin";
+  const canUpload = workspace.role === "owner" || workspace.role === "admin" || workspace.role === "member";
+  const jobIds = documents
+    .map((document) => document.latest_job_id)
+    .filter((jobId): jobId is string => Boolean(jobId));
+  const jobs = await Promise.all(jobIds.map((jobId) => getIngestionJob(workspaceId, jobId)));
+  const jobsById = new Map(jobs.map((job) => [job.id, job]));
 
   return (
     <main className="app-shell">
@@ -57,6 +80,126 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
           ) : null}
         </div>
         {error ? <p className="alert" role="alert">{error}</p> : null}
+
+        <div className="members-layout">
+          <section>
+            <div className="section-heading">
+              <div><p className="eyebrow">Storage pipeline</p><h2>Documents</h2></div>
+              <span className="count">{documents.length}</span>
+            </div>
+            {documents.length === 0 ? (
+              <div className="empty-state">
+                <p>No documents have been finalized in this workspace yet.</p>
+              </div>
+            ) : (
+              <div className="member-list">
+                {documents.map((document) => {
+                  const job = document.latest_job_id ? jobsById.get(document.latest_job_id) : undefined;
+                  return (
+                    <article className="member-row" key={document.id}>
+                      <span className="avatar">D</span>
+                      <span className="member-identity">
+                        <strong>{document.title}</strong>
+                        <small>
+                          version {document.version} · {document.latest_version_status ?? "pending"}
+                        </small>
+                        <small className="mono">{document.id}</small>
+                      </span>
+                      {job ? (
+                        <span className="role-badge">{job.state} · {job.progress}%</span>
+                      ) : null}
+                      {job && canAdminister && !["succeeded", "cancelled", "failed"].includes(job.state) ? (
+                        <form action={cancelIngestionJobAction}>
+                          <input name="workspaceId" type="hidden" value={workspace.id} />
+                          <input name="jobId" type="hidden" value={job.id} />
+                          <SubmitButton destructive>Cancel</SubmitButton>
+                        </form>
+                      ) : null}
+                      {job && canAdminister && ["failed", "retry_wait"].includes(job.state) ? (
+                        <form action={retryIngestionJobAction}>
+                          <input name="workspaceId" type="hidden" value={workspace.id} />
+                          <input name="jobId" type="hidden" value={job.id} />
+                          <SubmitButton>Retry</SubmitButton>
+                        </form>
+                      ) : null}
+                      {canUpload ? (
+                        <form action={deleteDocumentAction}>
+                          <input name="workspaceId" type="hidden" value={workspace.id} />
+                          <input name="documentId" type="hidden" value={document.id} />
+                          <SubmitButton destructive>Delete</SubmitButton>
+                        </form>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+          {canUpload ? (
+            <aside className="side-panel">
+              <p className="eyebrow">Direct upload</p><h2>Add a document</h2>
+              <p className="muted">
+                Phase 2 verifies and publishes metadata. Parsing and retrieval are introduced later.
+              </p>
+              {sources.length === 0 ? (
+                <p className="alert">Create a source before uploading documents.</p>
+              ) : null}
+              <form action={uploadDocumentAction} className="stack-form">
+                <input name="workspaceId" type="hidden" value={workspace.id} />
+                <label htmlFor="document-title">Title</label>
+                <input id="document-title" name="title" maxLength={255} placeholder="Security policy" />
+                <label htmlFor="document-source">Source</label>
+                <select id="document-source" name="sourceId" required>
+                  {sources.map((source) => (
+                    <option key={source.id} value={source.id}>{source.name}</option>
+                  ))}
+                </select>
+                <label htmlFor="document-file">File</label>
+                <input
+                  id="document-file"
+                  name="file"
+                  type="file"
+                  accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf"
+                  required
+                />
+                <SubmitButton disabled={sources.length === 0}>Upload and finalize</SubmitButton>
+              </form>
+            </aside>
+          ) : null}
+        </div>
+
+        <div className="members-layout">
+          <section>
+            <div className="section-heading">
+              <div><p className="eyebrow">Source registry</p><h2>Sources</h2></div>
+              <span className="count">{sources.length}</span>
+            </div>
+            <div className="member-list">
+              {sources.map((source) => (
+                <article className="member-row" key={source.id}>
+                  <span className="avatar">S</span>
+                  <span className="member-identity">
+                    <strong>{source.name}</strong>
+                    <small>{source.source_type} · {source.status}</small>
+                    <small className="mono">{source.id}</small>
+                  </span>
+                </article>
+              ))}
+              {sources.length === 0 ? <p className="muted">No sources yet.</p> : null}
+            </div>
+          </section>
+          {canUpload ? (
+            <aside className="side-panel">
+              <p className="eyebrow">Source metadata</p><h2>Create source</h2>
+              <form action={createSourceAction} className="stack-form">
+                <input name="workspaceId" type="hidden" value={workspace.id} />
+                <label htmlFor="source-name">Name</label>
+                <input id="source-name" name="name" minLength={2} maxLength={160} placeholder="Manual uploads" required />
+                <SubmitButton>Create source</SubmitButton>
+              </form>
+            </aside>
+          ) : null}
+        </div>
 
         <div className="members-layout">
           <section>
@@ -105,4 +248,3 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
     </main>
   );
 }
-

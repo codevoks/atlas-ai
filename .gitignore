@@ -1,4 +1,6 @@
 .local-private/
+.local-object-store*/
+**/.local-object-store*/
 .env
 .env.*
 !.env.example

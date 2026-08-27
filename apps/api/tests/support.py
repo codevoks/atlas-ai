@@ -18,6 +18,8 @@ def make_settings() -> Settings:
         auth_audience="atlas-api",
         auth_dev_secret=DEV_SECRET,
         database_url="postgresql+asyncpg://atlas:atlas_local_only@localhost:54329/atlas",
+        object_store_root=".local-object-store-test",
+        upload_signing_secret="atlas-phase2-test-upload-signing-secret",  # noqa: S106
     )
 
 

@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     auth_jwks_url: str | None = None
     auth_dev_secret: str | None = Field(default=None, repr=False)
     cors_origins: str = "http://localhost:3000"
+    object_store_root: str = ".local-object-store"
+    upload_signing_secret: str | None = Field(default=None, repr=False)
+    upload_intent_ttl_seconds: int = 900
+    max_upload_bytes: int = 10 * 1024 * 1024
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -36,6 +40,12 @@ class Settings(BaseSettings):
                 raise ValueError("AUTH_DEV_SECRET must contain at least 32 characters")
         elif not self.auth_jwks_url:
             raise ValueError("AUTH_JWKS_URL is required in oidc mode")
+        if self.upload_signing_secret is None or len(self.upload_signing_secret) < 32:
+            raise ValueError("UPLOAD_SIGNING_SECRET must contain at least 32 characters")
+        if self.upload_intent_ttl_seconds < 60:
+            raise ValueError("UPLOAD_INTENT_TTL_SECONDS must be at least 60")
+        if self.max_upload_bytes < 1:
+            raise ValueError("MAX_UPLOAD_BYTES must be positive")
         return self
 
 

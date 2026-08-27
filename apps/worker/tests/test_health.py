@@ -17,5 +17,5 @@ def test_worker_health_endpoints() -> None:
     assert ready.json() == {
         "status": "ready",
         "service": "atlas-worker",
-        "workload": "none-phase-1",
+        "workload": "ingestion",
     }

@@ -1,10 +1,10 @@
 # Atlas AI
 
-Atlas AI is a production-grade enterprise knowledge and RAG SaaS built through explicit engineering phases. The repository currently contains the Phase 1 foundation: monorepo tooling, web/API/worker service boundaries, authentication seams, workspace tenancy, RBAC, idempotent workspace creation, audit events, and generated OpenAPI-to-TypeScript contracts.
+Atlas AI is a production-grade enterprise knowledge and RAG SaaS built through explicit engineering phases. The repository currently contains the Phase 2 foundation: monorepo tooling, web/API/worker service boundaries, authentication seams, workspace tenancy, RBAC, idempotent workspace creation, audit events, source/document metadata, signed local upload intents, durable ingestion jobs, metadata-only worker publication, and generated OpenAPI-to-TypeScript contracts.
 
 ## Current phase
 
-Phase 1 — foundation, authentication, tenancy, and RBAC.
+Phase 2 — source storage and durable asynchronous ingestion.
 
 Implemented:
 
@@ -12,16 +12,19 @@ Implemented:
 - Next.js web/BFF in `apps/web`
 - Tailwind CSS styling pipeline for the web app
 - FastAPI control plane in `apps/api`
-- worker health surface in `apps/worker`
-- PostgreSQL schema migration for users, workspaces, memberships, audit events, and idempotency records
+- durable ingestion worker surface in `apps/worker`
+- PostgreSQL schema migrations for users, workspaces, memberships, audit events, idempotency records, sources, upload intents, documents, document versions, ingestion jobs, and job events
 - development auth for deterministic local testing
 - production OIDC/JWKS verifier boundary
 - workspace/member APIs and typed web screens
+- source, upload-intent, document, version, and ingestion-job APIs
+- HMAC-signed local upload URL flow with digest and size verification
+- lease/version-checked worker publication and upload-intent reconciliation endpoint
 - OpenAPI contract export and generated TypeScript types
 
 Deferred:
 
-- document upload, object storage, ingestion, parsing, retrieval, RAG, evaluation, agents, production cloud, billing, SAML/SCIM, and fine-grained document ACLs
+- production S3-compatible storage, malware scanning, parsing, chunking, embeddings, retrieval, RAG, evaluation, agents, production cloud, billing, SAML/SCIM, and fine-grained document ACLs
 
 ## Local setup
 

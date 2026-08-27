@@ -12,10 +12,11 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from atlas_api.api.routes import router
-from atlas_api.application.services import WorkspaceService
+from atlas_api.application.services import DocumentService, WorkspaceService
 from atlas_api.config import Settings, get_settings
 from atlas_api.domain.errors import ConflictError, DomainError
 from atlas_api.infrastructure.database import create_engine, create_session_factory
+from atlas_api.infrastructure.object_store import LocalObjectStore
 from atlas_api.infrastructure.repositories import IdentityRepository, SqlAlchemyTransactionFactory
 from atlas_api.security.authentication import create_identity_verifier
 
@@ -48,16 +49,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     resolved_settings = settings or get_settings()
     engine = create_engine(resolved_settings)
     session_factory = create_session_factory(engine)
+    transaction_factory = SqlAlchemyTransactionFactory(session_factory)
+    object_store = LocalObjectStore(resolved_settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.settings = resolved_settings
         app.state.engine = engine
         app.state.session_factory = session_factory
+        app.state.object_store = object_store
         app.state.identity_verifier = create_identity_verifier(resolved_settings)
         app.state.identity_repository = IdentityRepository(session_factory)
-        app.state.workspace_service = WorkspaceService(
-            SqlAlchemyTransactionFactory(session_factory)
+        app.state.workspace_service = WorkspaceService(transaction_factory)
+        app.state.document_service = DocumentService(
+            transaction_factory, object_store, resolved_settings
         )
         yield
         await engine.dispose()
@@ -72,7 +77,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         CORSMiddleware,
         allow_origins=resolved_settings.cors_origin_list,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Request-ID"],
     )
 

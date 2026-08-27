@@ -49,3 +49,15 @@ class DependencyUnavailableError(DomainError):
     code = "dependency_unavailable"
     status_code = 503
     public_message = "A required dependency is temporarily unavailable."
+
+
+class ResourceExhaustedError(DomainError):
+    code = "resource_exhausted"
+    status_code = 429
+    public_message = "A resource limit has been reached."
+
+
+class IntegrityViolationError(DomainError):
+    code = "integrity_violation"
+    status_code = 422
+    public_message = "The uploaded object failed integrity verification."

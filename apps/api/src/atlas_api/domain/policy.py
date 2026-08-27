@@ -14,10 +14,35 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.MEMBER_UPDATE,
             Permission.MEMBER_REMOVE,
             Permission.AUDIT_READ,
+            Permission.SOURCE_READ,
+            Permission.SOURCE_CREATE,
+            Permission.DOCUMENT_READ,
+            Permission.DOCUMENT_CREATE,
+            Permission.DOCUMENT_DELETE,
+            Permission.INGESTION_JOB_READ,
+            Permission.INGESTION_JOB_MANAGE,
         }
     ),
-    Role.MEMBER: frozenset({Permission.WORKSPACE_READ, Permission.MEMBER_LIST}),
-    Role.VIEWER: frozenset({Permission.WORKSPACE_READ}),
+    Role.MEMBER: frozenset(
+        {
+            Permission.WORKSPACE_READ,
+            Permission.MEMBER_LIST,
+            Permission.SOURCE_READ,
+            Permission.SOURCE_CREATE,
+            Permission.DOCUMENT_READ,
+            Permission.DOCUMENT_CREATE,
+            Permission.DOCUMENT_DELETE,
+            Permission.INGESTION_JOB_READ,
+        }
+    ),
+    Role.VIEWER: frozenset(
+        {
+            Permission.WORKSPACE_READ,
+            Permission.SOURCE_READ,
+            Permission.DOCUMENT_READ,
+            Permission.INGESTION_JOB_READ,
+        }
+    ),
 }
 
 

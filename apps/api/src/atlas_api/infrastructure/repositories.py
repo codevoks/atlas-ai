@@ -3,25 +3,50 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from datetime import UTC, datetime, timedelta
 from types import TracebackType
 
-from sqlalchemy import Select, func, select, text, update
+from sqlalchemy import Select, and_, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from atlas_api.application.ports import MemberRecord, Transaction, WorkspaceRecord, WorkspaceStore
+from atlas_api.application.ports import (
+    DocumentRecord,
+    DocumentStore,
+    DocumentVersionRecord,
+    IngestionJobRecord,
+    MemberRecord,
+    SourceRecord,
+    Transaction,
+    UploadIntentRecord,
+    WorkspaceRecord,
+    WorkspaceStore,
+)
 from atlas_api.domain.errors import ConflictError, ResourceNotFoundError
 from atlas_api.domain.models import (
     Actor,
+    DocumentStatus,
+    DocumentVersionStatus,
     IdentityClaims,
+    IngestionJobState,
     MembershipContext,
     MembershipStatus,
+    RetryClass,
     Role,
+    SourceStatus,
+    SourceType,
+    UploadIntentStatus,
 )
 from atlas_api.infrastructure.models import (
     AuditEventModel,
+    DocumentModel,
+    DocumentVersionModel,
     IdempotencyRecordModel,
+    IngestionJobModel,
+    JobEventModel,
     MembershipModel,
+    SourceModel,
+    UploadIntentModel,
     UserModel,
     WorkspaceModel,
 )
@@ -409,16 +434,760 @@ class SqlAlchemyWorkspaceStore:
         )
 
 
+class SqlAlchemyDocumentStore:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def create_source(
+        self, actor: Actor, workspace_id: uuid.UUID, name: str, request_id: str
+    ) -> SourceRecord:
+        source = SourceModel(
+            workspace_id=workspace_id,
+            name=name,
+            source_type=SourceType.UPLOAD.value,
+            status=SourceStatus.ACTIVE.value,
+            safe_metadata={},
+        )
+        self._session.add(source)
+        await self._session.flush()
+        await self._audit(
+            workspace_id, actor, "source.created", "source", source.id, request_id, {"name": name}
+        )
+        return self._source_record(source)
+
+    async def list_sources(self, workspace_id: uuid.UUID) -> list[SourceRecord]:
+        rows = (
+            await self._session.scalars(
+                select(SourceModel)
+                .where(
+                    SourceModel.workspace_id == workspace_id,
+                    SourceModel.status == SourceStatus.ACTIVE.value,
+                )
+                .order_by(SourceModel.created_at.asc(), SourceModel.id.asc())
+            )
+        ).all()
+        return [self._source_record(row) for row in rows]
+
+    async def create_upload_intent(
+        self,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        original_filename: str,
+        media_type: str,
+        byte_size: int,
+        digest_sha256: str,
+        object_key: str,
+        expires_at: datetime,
+        request_id: str,
+    ) -> UploadIntentRecord:
+        intent = UploadIntentModel(
+            workspace_id=workspace_id,
+            created_by_user_id=actor.user_id,
+            object_key=object_key,
+            original_filename=original_filename,
+            media_type=media_type,
+            byte_size=byte_size,
+            digest_sha256=digest_sha256,
+            status=UploadIntentStatus.PENDING.value,
+            expires_at=expires_at,
+        )
+        self._session.add(intent)
+        await self._session.flush()
+        await self._audit(
+            workspace_id,
+            actor,
+            "upload_intent.created",
+            "upload_intent",
+            intent.id,
+            request_id,
+            {"media_type": media_type},
+        )
+        return self._upload_intent_record(intent)
+
+    async def get_upload_intent(self, intent_id: uuid.UUID) -> UploadIntentRecord | None:
+        intent = await self._session.get(UploadIntentModel, intent_id)
+        return None if intent is None else self._upload_intent_record(intent)
+
+    async def mark_upload_received(
+        self, intent_id: uuid.UUID, byte_size: int, digest_sha256: str
+    ) -> None:
+        intent = await self._session.get(UploadIntentModel, intent_id, with_for_update=True)
+        if intent is None:
+            raise ResourceNotFoundError()
+        if intent.byte_size != byte_size or intent.digest_sha256 != digest_sha256:
+            raise ConflictError("The upload receipt does not match the upload intent.")
+        if intent.status == UploadIntentStatus.FINALIZED.value:
+            raise ConflictError("The upload intent has already been finalized.")
+        intent.status = UploadIntentStatus.UPLOADED.value
+
+    async def finalize_upload(
+        self,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        source_id: uuid.UUID,
+        upload_intent_id: uuid.UUID,
+        title: str,
+        idempotency_key: str,
+        request_id: str,
+    ) -> tuple[DocumentRecord, DocumentVersionRecord, IngestionJobRecord, bool]:
+        operation = "upload:finalize"
+        request_body = {
+            "workspace_id": str(workspace_id),
+            "source_id": str(source_id),
+            "upload_intent_id": str(upload_intent_id),
+            "title": title,
+        }
+        key_hash = _sha256(idempotency_key)
+        request_hash = _sha256(json.dumps(request_body, sort_keys=True))
+        lock_id = _advisory_lock_id(f"{actor.user_id}:{operation}:{key_hash}")
+        await self._session.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": lock_id}
+        )
+        prior = await self._session.scalar(
+            select(IdempotencyRecordModel).where(
+                IdempotencyRecordModel.actor_user_id == actor.user_id,
+                IdempotencyRecordModel.operation == operation,
+                IdempotencyRecordModel.key_hash == key_hash,
+            )
+        )
+        if prior is not None:
+            if prior.request_hash != request_hash:
+                raise ConflictError("The idempotency key was already used for a different request.")
+            document_record, version_record, job_record = await self._records_from_response(
+                prior.response_body
+            )
+            return document_record, version_record, job_record, True
+
+        source = await self._session.scalar(
+            select(SourceModel).where(
+                SourceModel.id == source_id,
+                SourceModel.workspace_id == workspace_id,
+                SourceModel.status == SourceStatus.ACTIVE.value,
+            )
+        )
+        if source is None:
+            raise ResourceNotFoundError()
+
+        intent = await self._session.get(UploadIntentModel, upload_intent_id, with_for_update=True)
+        if intent is None or intent.workspace_id != workspace_id:
+            raise ResourceNotFoundError()
+        if intent.created_by_user_id != actor.user_id:
+            raise ConflictError("Only the upload creator can finalize this upload intent.")
+        if intent.status == UploadIntentStatus.FINALIZED.value:
+            raise ConflictError("The upload intent has already been finalized.")
+        if intent.status != UploadIntentStatus.UPLOADED.value:
+            raise ConflictError("The upload intent must be uploaded before finalization.")
+        if intent.expires_at < datetime.now(UTC):
+            intent.status = UploadIntentStatus.EXPIRED.value
+            raise ConflictError("The upload intent has expired.")
+
+        document_model = DocumentModel(
+            workspace_id=workspace_id,
+            source_id=source_id,
+            title=title,
+            status=DocumentStatus.ACTIVE.value,
+            created_by_user_id=actor.user_id,
+        )
+        self._session.add(document_model)
+        await self._session.flush()
+
+        document_version = DocumentVersionModel(
+            workspace_id=workspace_id,
+            document_id=document_model.id,
+            version_number=1,
+            object_key=intent.object_key,
+            digest_sha256=intent.digest_sha256,
+            media_type=intent.media_type,
+            byte_size=intent.byte_size,
+            status=DocumentVersionStatus.INGESTION_PENDING.value,
+            active=False,
+            parser_config={"phase": 2, "parsing": "deferred"},
+            created_by_user_id=actor.user_id,
+        )
+        self._session.add(document_version)
+        await self._session.flush()
+
+        job = IngestionJobModel(
+            workspace_id=workspace_id,
+            document_version_id=document_version.id,
+            job_type="ingest_document",
+            state=IngestionJobState.PENDING.value,
+            attempts=0,
+            max_attempts=3,
+            progress=0,
+            cancellation_requested=False,
+            idempotency_key=f"ingest:{document_version.id}",
+            config={"phase": 2, "operation": "verify_and_publish_metadata"},
+        )
+        self._session.add(job)
+        intent.status = UploadIntentStatus.FINALIZED.value
+        intent.finalized_document_version_id = document_version.id
+        await self._session.flush()
+        await self._job_event(
+            workspace_id, job.id, None, IngestionJobState.PENDING, "upload_finalized", {}
+        )
+        await self._audit(
+            workspace_id,
+            actor,
+            "document_version.created",
+            "document_version",
+            document_version.id,
+            request_id,
+            {"document_id": str(document_model.id)},
+        )
+
+        created_document_record = await self.get_document(actor, workspace_id, document_model.id)
+        if created_document_record is None:
+            raise ResourceNotFoundError()
+        version_record = self._version_record(document_version)
+        job_record = self._job_record(job)
+        response_body = self._response_body(created_document_record, version_record, job_record)
+        self._session.add(
+            IdempotencyRecordModel(
+                actor_user_id=actor.user_id,
+                operation=operation,
+                key_hash=key_hash,
+                request_hash=request_hash,
+                response_status=201,
+                response_body=response_body,
+            )
+        )
+        return created_document_record, version_record, job_record, False
+
+    async def list_documents(self, actor: Actor, workspace_id: uuid.UUID) -> list[DocumentRecord]:
+        documents = (
+            await self._session.scalars(
+                select(DocumentModel)
+                .where(
+                    DocumentModel.workspace_id == workspace_id,
+                    DocumentModel.status == DocumentStatus.ACTIVE.value,
+                )
+                .order_by(DocumentModel.created_at.desc(), DocumentModel.id.asc())
+            )
+        ).all()
+        return [await self._document_record(document) for document in documents]
+
+    async def get_document(
+        self, actor: Actor, workspace_id: uuid.UUID, document_id: uuid.UUID
+    ) -> DocumentRecord | None:
+        document = await self._session.scalar(
+            select(DocumentModel).where(
+                DocumentModel.id == document_id,
+                DocumentModel.workspace_id == workspace_id,
+                DocumentModel.status == DocumentStatus.ACTIVE.value,
+            )
+        )
+        return None if document is None else await self._document_record(document)
+
+    async def list_versions(
+        self, actor: Actor, workspace_id: uuid.UUID, document_id: uuid.UUID
+    ) -> list[DocumentVersionRecord]:
+        exists = await self._session.scalar(
+            select(DocumentModel.id).where(
+                DocumentModel.id == document_id,
+                DocumentModel.workspace_id == workspace_id,
+                DocumentModel.status == DocumentStatus.ACTIVE.value,
+            )
+        )
+        if exists is None:
+            raise ResourceNotFoundError()
+        versions = (
+            await self._session.scalars(
+                select(DocumentVersionModel)
+                .where(
+                    DocumentVersionModel.workspace_id == workspace_id,
+                    DocumentVersionModel.document_id == document_id,
+                )
+                .order_by(DocumentVersionModel.version_number.desc())
+            )
+        ).all()
+        return [self._version_record(row) for row in versions]
+
+    async def delete_document(
+        self, actor: Actor, workspace_id: uuid.UUID, document_id: uuid.UUID, request_id: str
+    ) -> None:
+        document = await self._session.scalar(
+            select(DocumentModel)
+            .where(
+                DocumentModel.id == document_id,
+                DocumentModel.workspace_id == workspace_id,
+                DocumentModel.status == DocumentStatus.ACTIVE.value,
+            )
+            .with_for_update()
+        )
+        if document is None:
+            raise ResourceNotFoundError()
+        document.status = DocumentStatus.DELETED.value
+        document.deleted_at = datetime.now(UTC)
+        document.version += 1
+        await self._session.execute(
+            update(DocumentVersionModel)
+            .where(DocumentVersionModel.document_id == document_id)
+            .values(active=False)
+        )
+        active_job_states = [
+            IngestionJobState.PENDING.value,
+            IngestionJobState.CLAIMED.value,
+            IngestionJobState.VERIFYING.value,
+            IngestionJobState.PUBLISHING.value,
+            IngestionJobState.RETRY_WAIT.value,
+        ]
+        jobs = (
+            await self._session.scalars(
+                select(IngestionJobModel)
+                .join(
+                    DocumentVersionModel,
+                    DocumentVersionModel.id == IngestionJobModel.document_version_id,
+                )
+                .where(
+                    DocumentVersionModel.document_id == document_id,
+                    IngestionJobModel.state.in_(active_job_states),
+                )
+                .with_for_update()
+            )
+        ).all()
+        for job in jobs:
+            prior = IngestionJobState(job.state)
+            job.state = IngestionJobState.CANCEL_REQUESTED.value
+            job.cancellation_requested = True
+            job.version += 1
+            await self._job_event(
+                workspace_id,
+                job.id,
+                prior,
+                IngestionJobState.CANCEL_REQUESTED,
+                "document_deleted",
+                {},
+            )
+        await self._audit(
+            workspace_id, actor, "document.deleted", "document", document_id, request_id, {}
+        )
+
+    async def get_job(
+        self, actor: Actor, workspace_id: uuid.UUID, job_id: uuid.UUID
+    ) -> IngestionJobRecord | None:
+        job = await self._session.scalar(
+            select(IngestionJobModel).where(
+                IngestionJobModel.id == job_id,
+                IngestionJobModel.workspace_id == workspace_id,
+            )
+        )
+        return None if job is None else self._job_record(job)
+
+    async def cancel_job(
+        self, actor: Actor, workspace_id: uuid.UUID, job_id: uuid.UUID, request_id: str
+    ) -> IngestionJobRecord:
+        job = await self._session.scalar(
+            select(IngestionJobModel)
+            .where(
+                IngestionJobModel.id == job_id,
+                IngestionJobModel.workspace_id == workspace_id,
+            )
+            .with_for_update()
+        )
+        if job is None:
+            raise ResourceNotFoundError()
+        current = IngestionJobState(job.state)
+        if current in {
+            IngestionJobState.SUCCEEDED,
+            IngestionJobState.CANCELLED,
+            IngestionJobState.FAILED,
+        }:
+            return self._job_record(job)
+        job.cancellation_requested = True
+        job.state = IngestionJobState.CANCEL_REQUESTED.value
+        job.version += 1
+        await self._job_event(
+            workspace_id, job.id, current, IngestionJobState.CANCEL_REQUESTED, "user_requested", {}
+        )
+        await self._audit(
+            workspace_id,
+            actor,
+            "ingestion_job.cancel_requested",
+            "ingestion_job",
+            job.id,
+            request_id,
+            {},
+        )
+        return self._job_record(job)
+
+    async def retry_job(
+        self, actor: Actor, workspace_id: uuid.UUID, job_id: uuid.UUID, request_id: str
+    ) -> IngestionJobRecord:
+        job = await self._session.scalar(
+            select(IngestionJobModel)
+            .where(
+                IngestionJobModel.id == job_id,
+                IngestionJobModel.workspace_id == workspace_id,
+            )
+            .with_for_update()
+        )
+        if job is None:
+            raise ResourceNotFoundError()
+        if IngestionJobState(job.state) not in {
+            IngestionJobState.FAILED,
+            IngestionJobState.RETRY_WAIT,
+        }:
+            raise ConflictError("Only failed or retry-wait ingestion jobs can be retried.")
+        prior = IngestionJobState(job.state)
+        job.state = IngestionJobState.PENDING.value
+        job.error_class = None
+        job.error_code = None
+        job.error_message = None
+        job.cancellation_requested = False
+        job.next_attempt_at = datetime.now(UTC)
+        job.version += 1
+        await self._job_event(
+            workspace_id, job.id, prior, IngestionJobState.PENDING, "user_retry", {}
+        )
+        await self._audit(
+            workspace_id, actor, "ingestion_job.retried", "ingestion_job", job.id, request_id, {}
+        )
+        return self._job_record(job)
+
+    async def _document_record(self, document: DocumentModel) -> DocumentRecord:
+        latest_version = await self._session.scalar(
+            select(DocumentVersionModel)
+            .where(DocumentVersionModel.document_id == document.id)
+            .order_by(
+                DocumentVersionModel.version_number.desc(), DocumentVersionModel.created_at.desc()
+            )
+            .limit(1)
+        )
+        latest_job = None
+        if latest_version is not None:
+            latest_job = await self._session.scalar(
+                select(IngestionJobModel)
+                .where(IngestionJobModel.document_version_id == latest_version.id)
+                .order_by(IngestionJobModel.created_at.desc())
+                .limit(1)
+            )
+        return DocumentRecord(
+            id=document.id,
+            workspace_id=document.workspace_id,
+            source_id=document.source_id,
+            title=document.title,
+            status=DocumentStatus(document.status),
+            version=document.version,
+            latest_version_id=latest_version.id if latest_version is not None else None,
+            latest_version_status=(
+                DocumentVersionStatus(latest_version.status) if latest_version is not None else None
+            ),
+            latest_job_id=latest_job.id if latest_job is not None else None,
+        )
+
+    async def _records_from_response(
+        self, body: dict[str, str]
+    ) -> tuple[DocumentRecord, DocumentVersionRecord, IngestionJobRecord]:
+        document = await self._session.get(DocumentModel, uuid.UUID(body["document_id"]))
+        version = await self._session.get(
+            DocumentVersionModel, uuid.UUID(body["document_version_id"])
+        )
+        job = await self._session.get(IngestionJobModel, uuid.UUID(body["ingestion_job_id"]))
+        if document is None or version is None or job is None:
+            raise ConflictError("The idempotent response can no longer be resolved.")
+        document_record = await self._document_record(document)
+        return document_record, self._version_record(version), self._job_record(job)
+
+    @staticmethod
+    def _response_body(
+        document: DocumentRecord, version: DocumentVersionRecord, job: IngestionJobRecord
+    ) -> dict[str, str]:
+        return {
+            "document_id": str(document.id),
+            "document_version_id": str(version.id),
+            "ingestion_job_id": str(job.id),
+        }
+
+    @staticmethod
+    def _source_record(source: SourceModel) -> SourceRecord:
+        return SourceRecord(
+            id=source.id,
+            workspace_id=source.workspace_id,
+            name=source.name,
+            source_type=SourceType(source.source_type),
+            status=SourceStatus(source.status),
+            version=source.version,
+        )
+
+    @staticmethod
+    def _upload_intent_record(intent: UploadIntentModel) -> UploadIntentRecord:
+        return UploadIntentRecord(
+            id=intent.id,
+            workspace_id=intent.workspace_id,
+            created_by_user_id=intent.created_by_user_id,
+            object_key=intent.object_key,
+            original_filename=intent.original_filename,
+            media_type=intent.media_type,
+            byte_size=intent.byte_size,
+            digest_sha256=intent.digest_sha256,
+            status=UploadIntentStatus(intent.status),
+            expires_at=intent.expires_at,
+        )
+
+    @staticmethod
+    def _version_record(version: DocumentVersionModel) -> DocumentVersionRecord:
+        return DocumentVersionRecord(
+            id=version.id,
+            workspace_id=version.workspace_id,
+            document_id=version.document_id,
+            version_number=version.version_number,
+            object_key=version.object_key,
+            digest_sha256=version.digest_sha256,
+            media_type=version.media_type,
+            byte_size=version.byte_size,
+            status=DocumentVersionStatus(version.status),
+            active=version.active,
+            created_at=version.created_at,
+        )
+
+    @staticmethod
+    def _job_record(job: IngestionJobModel) -> IngestionJobRecord:
+        return IngestionJobRecord(
+            id=job.id,
+            workspace_id=job.workspace_id,
+            document_version_id=job.document_version_id,
+            state=IngestionJobState(job.state),
+            attempts=job.attempts,
+            max_attempts=job.max_attempts,
+            lease_owner=job.lease_owner,
+            lease_expires_at=job.lease_expires_at,
+            heartbeat_at=job.heartbeat_at,
+            progress=job.progress,
+            error_class=job.error_class,
+            error_code=job.error_code,
+            error_message=job.error_message,
+            cancellation_requested=job.cancellation_requested,
+            next_attempt_at=job.next_attempt_at,
+            version=job.version,
+            created_at=job.created_at,
+        )
+
+    async def _audit(
+        self,
+        workspace_id: uuid.UUID,
+        actor: Actor,
+        action: str,
+        target_type: str,
+        target_id: uuid.UUID,
+        request_id: str,
+        safe_metadata: dict[str, str],
+    ) -> None:
+        self._session.add(
+            AuditEventModel(
+                workspace_id=workspace_id,
+                actor_user_id=actor.user_id,
+                action=action,
+                target_type=target_type,
+                target_id=target_id,
+                request_id=request_id,
+                safe_metadata=safe_metadata,
+            )
+        )
+
+    async def _job_event(
+        self,
+        workspace_id: uuid.UUID,
+        job_id: uuid.UUID,
+        from_state: IngestionJobState | None,
+        to_state: IngestionJobState,
+        reason: str,
+        safe_metadata: dict[str, str],
+    ) -> None:
+        self._session.add(
+            JobEventModel(
+                workspace_id=workspace_id,
+                job_id=job_id,
+                from_state=from_state.value if from_state is not None else None,
+                to_state=to_state.value,
+                reason=reason,
+                safe_metadata=safe_metadata,
+            )
+        )
+
+
+class SqlAlchemyIngestionJobStore:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def claim_next_job(
+        self, worker_id: str, *, lease_seconds: int = 60
+    ) -> IngestionJobRecord | None:
+        now = datetime.now(UTC)
+        claimable_states = [IngestionJobState.PENDING.value, IngestionJobState.RETRY_WAIT.value]
+        job = await self._session.scalar(
+            select(IngestionJobModel)
+            .where(
+                or_(
+                    and_(
+                        IngestionJobModel.state.in_(claimable_states),
+                        IngestionJobModel.next_attempt_at <= now,
+                    ),
+                    and_(
+                        IngestionJobModel.state.in_(
+                            [
+                                IngestionJobState.CLAIMED.value,
+                                IngestionJobState.VERIFYING.value,
+                                IngestionJobState.PUBLISHING.value,
+                            ]
+                        ),
+                        IngestionJobModel.lease_expires_at < now,
+                    ),
+                    IngestionJobModel.state == IngestionJobState.CANCEL_REQUESTED.value,
+                ),
+                IngestionJobModel.attempts < IngestionJobModel.max_attempts,
+            )
+            .order_by(IngestionJobModel.created_at.asc(), IngestionJobModel.id.asc())
+            .with_for_update(skip_locked=True)
+            .limit(1)
+        )
+        if job is None:
+            return None
+        prior = IngestionJobState(job.state)
+        if job.state != IngestionJobState.CANCEL_REQUESTED.value:
+            job.attempts += 1
+        job.state = IngestionJobState.CLAIMED.value
+        job.lease_owner = worker_id
+        job.lease_expires_at = now + timedelta(seconds=lease_seconds)
+        job.heartbeat_at = now
+        job.progress = max(job.progress, 5)
+        job.version += 1
+        await self._job_event(
+            job.workspace_id, job.id, prior, IngestionJobState.CLAIMED, "claimed", {}
+        )
+        return SqlAlchemyDocumentStore._job_record(job)
+
+    async def transition_job(
+        self,
+        job_id: uuid.UUID,
+        worker_id: str,
+        expected_version: int,
+        to_state: IngestionJobState,
+        *,
+        progress: int,
+        reason: str,
+        error_class: RetryClass | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
+        retry_after_seconds: int | None = None,
+    ) -> IngestionJobRecord:
+        now = datetime.now(UTC)
+        job = await self._session.scalar(
+            select(IngestionJobModel).where(IngestionJobModel.id == job_id).with_for_update()
+        )
+        if job is None:
+            raise ResourceNotFoundError()
+        if job.lease_owner != worker_id or job.version != expected_version:
+            raise ConflictError("The ingestion job lease is no longer valid.")
+        if job.lease_expires_at is not None and job.lease_expires_at < now:
+            raise ConflictError("The ingestion job lease has expired.")
+        prior = IngestionJobState(job.state)
+        job.state = to_state.value
+        job.progress = progress
+        job.error_class = error_class.value if error_class is not None else None
+        job.error_code = error_code
+        job.error_message = error_message
+        job.heartbeat_at = now
+        job.version += 1
+        if to_state in {
+            IngestionJobState.SUCCEEDED,
+            IngestionJobState.CANCELLED,
+            IngestionJobState.FAILED,
+        }:
+            job.lease_owner = None
+            job.lease_expires_at = None
+        if to_state == IngestionJobState.RETRY_WAIT:
+            job.lease_owner = None
+            job.lease_expires_at = None
+            job.next_attempt_at = now + timedelta(seconds=retry_after_seconds or 30)
+        await self._job_event(job.workspace_id, job.id, prior, to_state, reason, {})
+        return SqlAlchemyDocumentStore._job_record(job)
+
+    async def publish_document_version(
+        self, job_id: uuid.UUID, worker_id: str, expected_job_version: int
+    ) -> IngestionJobRecord:
+        now = datetime.now(UTC)
+        job = await self._session.scalar(
+            select(IngestionJobModel).where(IngestionJobModel.id == job_id).with_for_update()
+        )
+        if job is None:
+            raise ResourceNotFoundError()
+        if job.lease_owner != worker_id or job.version != expected_job_version:
+            raise ConflictError("The ingestion job lease is no longer valid.")
+        if job.lease_expires_at is not None and job.lease_expires_at < now:
+            raise ConflictError("The ingestion job lease has expired.")
+        version = await self._session.scalar(
+            select(DocumentVersionModel)
+            .where(DocumentVersionModel.id == job.document_version_id)
+            .with_for_update()
+        )
+        if version is None:
+            raise ResourceNotFoundError()
+        await self._session.execute(
+            update(DocumentVersionModel)
+            .where(DocumentVersionModel.document_id == version.document_id)
+            .values(active=False)
+        )
+        prior = IngestionJobState(job.state)
+        version.active = True
+        version.status = DocumentVersionStatus.READY.value
+        job.state = IngestionJobState.SUCCEEDED.value
+        job.progress = 100
+        job.lease_owner = None
+        job.lease_expires_at = None
+        job.heartbeat_at = now
+        job.error_class = None
+        job.error_code = None
+        job.error_message = None
+        job.version += 1
+        await self._job_event(
+            job.workspace_id, job.id, prior, IngestionJobState.SUCCEEDED, "published", {}
+        )
+        return SqlAlchemyDocumentStore._job_record(job)
+
+    async def document_version_for_job(self, job_id: uuid.UUID) -> DocumentVersionRecord | None:
+        row = await self._session.scalar(
+            select(DocumentVersionModel)
+            .join(
+                IngestionJobModel, IngestionJobModel.document_version_id == DocumentVersionModel.id
+            )
+            .where(IngestionJobModel.id == job_id)
+        )
+        return None if row is None else SqlAlchemyDocumentStore._version_record(row)
+
+    async def _job_event(
+        self,
+        workspace_id: uuid.UUID,
+        job_id: uuid.UUID,
+        from_state: IngestionJobState | None,
+        to_state: IngestionJobState,
+        reason: str,
+        safe_metadata: dict[str, str],
+    ) -> None:
+        self._session.add(
+            JobEventModel(
+                workspace_id=workspace_id,
+                job_id=job_id,
+                from_state=from_state.value if from_state is not None else None,
+                to_state=to_state.value,
+                reason=reason,
+                safe_metadata=safe_metadata,
+            )
+        )
+
+
 class SqlAlchemyTransaction:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
         self._session: AsyncSession | None = None
         self.workspaces: WorkspaceStore
+        self.documents: DocumentStore
 
     async def __aenter__(self) -> SqlAlchemyTransaction:
         self._session = self._session_factory()
         await self._session.begin()
         self.workspaces = SqlAlchemyWorkspaceStore(self._session)
+        self.documents = SqlAlchemyDocumentStore(self._session)
         return self
 
     async def __aexit__(

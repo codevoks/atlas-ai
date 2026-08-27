@@ -17,27 +17,27 @@ export default function HomePage() {
       <section className="hero shell">
         <div>
           <p className="eyebrow">Enterprise knowledge, with evidence</p>
-          <h1>Build the tenant-safe foundation before retrieval begins.</h1>
+          <h1>Tenant-safe knowledge storage before retrieval begins.</h1>
           <p className="lede">
-            Phase 1 establishes the secure workspace, membership, RBAC, audit, and API contract
-            layer that later ingestion, retrieval, and grounded answers will depend on.
+            Phase 2 establishes secure workspaces, source metadata, signed uploads, durable
+            ingestion jobs, and metadata-only publication before parsing and retrieval are added.
           </p>
           <div className="hero-actions">
             <Link className="button" href="/sign-in">
               Open workspace
             </Link>
             <a className="text-link" href="http://localhost:8000/docs">
-              Explore Phase 1 API
+              Explore Phase 2 API
             </a>
           </div>
         </div>
-        <div className="architecture-card" aria-label="Phase 1 architecture summary">
-          <p className="card-label">Phase 1 foundation</p>
+        <div className="architecture-card" aria-label="Phase 2 architecture summary">
+          <p className="card-label">Phase 2 pipeline</p>
           <ol className="flow-list">
             <li><span>01</span> Identity verified at the API boundary</li>
-            <li><span>02</span> Workspace membership resolved server-side</li>
-            <li><span>03</span> RBAC enforced in application use cases</li>
-            <li><span>04</span> Mutations committed with audit evidence</li>
+            <li><span>02</span> Workspace RBAC resolves source and document access</li>
+            <li><span>03</span> Upload bytes verified by signed intent and digest</li>
+            <li><span>04</span> Worker lease publishes the version after integrity checks</li>
           </ol>
           <p className="mode">Auth mode: {authMode === "development" ? "local deterministic demo" : "OIDC / Clerk"}</p>
         </div>

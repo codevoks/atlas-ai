@@ -9,6 +9,11 @@ import { getApiToken } from "@/lib/session";
 export type Me = components["schemas"]["MeResponse"];
 export type Workspace = components["schemas"]["WorkspaceResponse"];
 export type Member = components["schemas"]["MemberResponse"];
+export type Source = components["schemas"]["SourceResponse"];
+export type Document = components["schemas"]["DocumentResponse"];
+export type IngestionJob = components["schemas"]["IngestionJobResponse"];
+export type UploadIntent = components["schemas"]["UploadIntentResponse"];
+export type UploadFinalizeResult = components["schemas"]["UploadFinalizeResponse"];
 
 interface ApiErrorPayload {
   error?: { code?: string; message?: string; request_id?: string };
@@ -63,4 +68,25 @@ export async function getMembers(workspaceId: string): Promise<Member[]> {
     `/v1/workspaces/${workspaceId}/members`,
   );
   return payload.items;
+}
+
+export async function getSources(workspaceId: string): Promise<Source[]> {
+  const payload = await apiRequest<{ items: Source[] }>(
+    `/v1/workspaces/${workspaceId}/sources`,
+  );
+  return payload.items;
+}
+
+export async function getDocuments(workspaceId: string): Promise<Document[]> {
+  const payload = await apiRequest<{ items: Document[] }>(
+    `/v1/workspaces/${workspaceId}/documents`,
+  );
+  return payload.items;
+}
+
+export async function getIngestionJob(
+  workspaceId: string,
+  jobId: string,
+): Promise<IngestionJob> {
+  return apiRequest<IngestionJob>(`/v1/workspaces/${workspaceId}/ingestion-jobs/${jobId}`);
 }

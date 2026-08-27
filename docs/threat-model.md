@@ -81,7 +81,31 @@ Implemented controls:
 
 Residual risks and follow-ups:
 
-- PostgreSQL-backed integration tests and migration execution are written but could not be completed in the current environment because no local PostgreSQL service is running.
+- PostgreSQL-backed integration tests and migration execution are part of the phase gate.
 - Rate limiting for auth/admin operations is still deferred; add before public exposure.
 - PostgreSQL RLS remains a later defense-in-depth decision after repository policy tests are proven.
 - Local development auth must never be exposed beyond local development; production deployments must use real OIDC/JWKS secrets and environment validation.
+
+## Phase 2 implementation security review
+
+Implemented controls:
+
+- Source, upload-intent, document, version, ingestion-job, and job-event rows are workspace-scoped.
+- Source/document/job APIs authorize against active workspace membership before access.
+- Browser-supplied workspace IDs never grant authority; the API checks membership and permission for every Phase 2 resource route.
+- Upload object keys are generated server-side with a workspace prefix and upload-intent UUID; clients cannot choose storage paths.
+- Local development upload URLs are HMAC signed and expire with the upload intent.
+- Upload receipt validates signed token, expiry, media type, byte size, and SHA-256 digest before marking an intent uploaded.
+- Finalization verifies stored object metadata and digest before creating document/version/job state.
+- Upload finalization is idempotent by actor, operation, idempotency key, and request hash.
+- Worker publication requires a valid lease owner and expected job version; stale workers cannot publish.
+- Worker failures for missing or corrupt objects terminate as integrity failures and do not publish the version.
+- Job cancellation and retry commands are authorized and audited.
+- Logs and API responses expose IDs/status/errors but not uploaded content bytes.
+
+Residual risks and follow-ups:
+
+- The Phase 2 object store is a local filesystem adapter for deterministic development. Production must configure a private S3-compatible bucket, server-side encryption, lifecycle cleanup, and least-privilege service identities behind the same interface.
+- Magic-byte validation, malware scanning, parser sandboxing, archive-bomb controls, extracted text handling, chunking, embeddings, and retrieval authorization are deferred to later ingestion/retrieval phases.
+- Per-tenant upload quotas and rate limits are represented by size limits and permission checks in Phase 2 but still need durable quota ledgers before public exposure.
+- Automated orphan cleanup/reconciliation is designed but not scheduled in Phase 2; implementation belongs with production object-storage lifecycle or a dedicated maintenance worker.
