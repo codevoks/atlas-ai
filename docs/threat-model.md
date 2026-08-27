@@ -130,3 +130,21 @@ Residual risks and follow-ups:
 - The current text parser runs in-process because it handles only bounded UTF-8 text. Any richer converter must run behind the parser-sandbox boundary with CPU, memory, file-system, temp-path, and network controls.
 - Chunk text is stored directly in PostgreSQL for the initial retrieval path. Encryption, redaction policy, retention controls, and large-document storage optimization remain deployment/security hardening work.
 - Chunk quality parameters are deterministic defaults, not final retrieval-tuned values. Later evaluation phases must benchmark chunk size, overlap, and structure preservation before changing defaults.
+
+## Phase 4 implementation security review
+
+Implemented controls:
+
+- Document publication now requires complete embeddings for the configured active embedding set before a version is marked `READY`.
+- Embedding sets persist provider, model, model version, dimension, normalization, configuration, lifecycle status, and workspace scope. Vectors from different sets are not compared.
+- The default embedding provider is deterministic and local. It does not call paid APIs, hosted providers, or mandatory local LLM downloads.
+- Semantic retrieval checks active workspace membership and `document:read` permission before search.
+- Tenant, active-document, active-version, ready-version, embedding-set, and optional metadata filters are applied before ranking candidates.
+- Search responses return typed evidence, snippets, scores, distances, IDs, trace ID, and bounded debug metadata. They do not expose raw vectors.
+- Query length and `top_k` are bounded, and empty/non-token queries fail safely.
+
+Residual risks and deferrals:
+
+- Phase 4 uses an exact PostgreSQL JSONB vector baseline for the zero-cost path. pgvector ANN index adoption is deferred until the local stack deliberately includes the extension and query-plan/recall/latency evidence justifies it.
+- Embedding inversion/linkability remains a privacy risk. Raw vector export, tenant analytics, retention policy, and provider data-retention policy require later dedicated controls before hosted providers are enabled.
+- Search is semantic-only evidence retrieval. Lexical/hybrid retrieval, reranking, grounded generation, citation validation, and adversarial prompt-injection evaluation remain deferred to later phases.

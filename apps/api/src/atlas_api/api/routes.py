@@ -9,6 +9,7 @@ from sqlalchemy import text
 from atlas_api.api.dependencies import (
     ActorDependency,
     DocumentServiceDependency,
+    SemanticSearchServiceDependency,
     WorkspaceServiceDependency,
 )
 from atlas_api.api.schemas import (
@@ -18,6 +19,9 @@ from atlas_api.api.schemas import (
     DocumentResponse,
     DocumentVersionListResponse,
     DocumentVersionResponse,
+    EmbeddingBackfillRequest,
+    EmbeddingBackfillResponse,
+    EvidenceResponse,
     HealthResponse,
     IngestionJobResponse,
     MemberCreate,
@@ -25,6 +29,8 @@ from atlas_api.api.schemas import (
     MemberResponse,
     MemberUpdate,
     MeResponse,
+    SemanticSearchRequest,
+    SemanticSearchResponse,
     SourceCreate,
     SourceListResponse,
     SourceResponse,
@@ -37,6 +43,7 @@ from atlas_api.api.schemas import (
     WorkspaceResponse,
     WorkspaceUpdate,
 )
+from atlas_api.application.ports import SemanticSearchFilter
 from atlas_api.domain.errors import DependencyUnavailableError, ValidationError
 
 router = APIRouter()
@@ -373,6 +380,54 @@ async def list_document_version_chunks(
 ) -> ChunkListResponse:
     records = await service.list_chunks(actor, workspace_id, document_id, version_id)
     return ChunkListResponse(items=[ChunkResponse.from_record(item) for item in records])
+
+
+@router.post(
+    "/v1/workspaces/{workspace_id}/search/semantic",
+    response_model=SemanticSearchResponse,
+    tags=["search"],
+)
+async def semantic_search(
+    workspace_id: uuid.UUID,
+    payload: SemanticSearchRequest,
+    request: Request,
+    actor: ActorDependency,
+    service: SemanticSearchServiceDependency,
+) -> SemanticSearchResponse:
+    records, debug = await service.search(
+        actor=actor,
+        workspace_id=workspace_id,
+        query=payload.query,
+        top_k=payload.top_k,
+        filters=SemanticSearchFilter(
+            source_id=payload.filters.source_id,
+            document_id=payload.filters.document_id,
+        ),
+    )
+    return SemanticSearchResponse(
+        items=[EvidenceResponse.from_candidate(item) for item in records],
+        trace_id=request.state.request_id,
+        debug=debug if payload.debug else None,
+    )
+
+
+@router.post(
+    "/v1/workspaces/{workspace_id}/embeddings/backfill",
+    response_model=EmbeddingBackfillResponse,
+    tags=["search"],
+)
+async def backfill_embeddings(
+    workspace_id: uuid.UUID,
+    payload: EmbeddingBackfillRequest,
+    actor: ActorDependency,
+    service: SemanticSearchServiceDependency,
+) -> EmbeddingBackfillResponse:
+    result = await service.backfill_missing_embeddings(
+        actor=actor,
+        workspace_id=workspace_id,
+        limit=payload.limit,
+    )
+    return EmbeddingBackfillResponse.from_result(result)
 
 
 @router.delete(

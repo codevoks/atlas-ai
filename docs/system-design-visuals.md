@@ -15,7 +15,7 @@ flowchart LR
         Web
         API
         Worker[Worker fleet\ndurable processing]
-        DB[(PostgreSQL and pgvector\nauthoritative state)]
+        DB[(PostgreSQL\nauthoritative state and exact vector baseline)]
         Redis[(Redis\nephemeral coordination)]
         API -->|transactions and retrieval| DB
         API -->|publish or claim durable intent| Worker
@@ -171,8 +171,9 @@ stateDiagram-v2
         Verifying --> Parsing: object digest and size matched
         Parsing --> Normalizing: supported text extracted
         Normalizing --> Chunking: normalized artifact stored
-        Chunking --> Publishing: deterministic chunks prepared
-        Publishing --> Succeeded: chunks and version marked READY
+        Chunking --> Embedding: deterministic chunks prepared
+        Embedding --> Publishing: complete embedding set coverage
+        Publishing --> Succeeded: chunks, embeddings, and version marked READY
         Verifying --> Failed: missing or corrupt object
         Parsing --> Failed: unsupported, binary, invalid UTF-8, or oversized input
         Chunking --> Failed: chunk limits exceeded
@@ -185,7 +186,7 @@ stateDiagram-v2
 
 Phase 2 uses API-hosted local signed upload handling for development. The adapter boundary preserves the production design: later S3-compatible storage replaces the local adapter without changing the document or ingestion state model.
 
-## 1C. Phase 3 implemented parsing, normalization, and chunking slice
+## 1C. Phase 4 implemented parsing, chunking, embedding, and semantic retrieval slice
 
 ```mermaid
 sequenceDiagram
@@ -195,6 +196,7 @@ sequenceDiagram
     participant P as Text parser
     participant N as Normalizer
     participant C as Chunker
+    participant E as Deterministic embedding provider
     participant D as PostgreSQL
 
     K->>D: Claim pending ingestion job lease
@@ -205,7 +207,9 @@ sequenceDiagram
     K->>N: Normalize Unicode, newlines, and whitespace
     K->>O: Store normalized derived artifact under workspace prefix
     K->>C: Build deterministic bounded chunks
-    K->>D: Transaction: replace version chunks, persist provenance/counts, mark version READY and job SUCCEEDED
+    K->>E: Embed chunks in bounded zero-cost batches
+    E-->>K: Normalized vectors with model/version/dimension provenance
+    K->>D: Transaction: replace version chunks, persist embeddings/provenance/counts, mark version READY and job SUCCEEDED
 ```
 
 ```mermaid
@@ -216,17 +220,21 @@ flowchart LR
     Parsed[Parsed blocks\nheadings and paragraphs]
     Normalized[Normalized artifact\nSHA-256 addressed]
     Chunks[Chunk rows\nordinal span hash text metadata]
-    Ready[Ready document version\nparser and chunker provenance]
+    Embeddings[Chunk embeddings\nprovider model version dimension]
+    Search[Semantic evidence\nscores snippets trace ID]
+    Ready[Ready document version\nparser chunker embedding provenance]
 
     Upload --> Verify
     Verify -->|unsupported binary PDF archive invalid UTF-8 oversized| Reject
     Verify -->|supported text or Markdown| Parsed
     Parsed --> Normalized
     Normalized --> Chunks
-    Chunks --> Ready
+    Chunks --> Embeddings
+    Embeddings --> Ready
+    Ready --> Search
 ```
 
-Phase 3 publishes chunks only inside the final database transaction. Partial parser/chunker output is never visible as a ready document version.
+Phase 4 publishes chunks and embeddings only inside the final database transaction. Partial parser/chunker/embedding output is never visible as a ready document version. Semantic search returns evidence only; answer generation remains deferred.
 
 ## 2. Durable ingestion and atomic publication
 
@@ -302,7 +310,7 @@ stateDiagram-v2
 flowchart LR
     Q[User query and typed filters] --> Auth[Authenticate, authorize,\nrate and budget check]
     Auth --> Spec[Workspace-scoped QuerySpec]
-    Spec --> S[Semantic candidates\npgvector]
+    Spec --> S[Semantic candidates\nPostgreSQL exact cosine baseline]
     Spec --> L[Lexical candidates\nPostgreSQL FTS]
     S --> F[RRF fusion and dedup]
     L --> F

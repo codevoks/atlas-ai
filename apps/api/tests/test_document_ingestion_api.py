@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import hashlib
+import uuid
 from typing import Any
 
 import pytest
 from httpx import AsyncClient
 
-from atlas_api.application.ports import ChunkDraftRecord
+from atlas_api.application.embeddings import DeterministicLocalEmbeddingProvider, EmbeddingRequest
+from atlas_api.application.ports import ChunkDraftRecord, ChunkEmbeddingDraftRecord
 from atlas_api.domain.models import IngestionJobState
 from atlas_api.infrastructure.database import create_engine, create_session_factory
-from atlas_api.infrastructure.repositories import SqlAlchemyIngestionJobStore
+from atlas_api.infrastructure.repositories import (
+    SqlAlchemyDocumentStore,
+    SqlAlchemyIngestionJobStore,
+)
 from tests.support import make_settings
 
 
@@ -311,6 +316,7 @@ async def test_published_chunks_are_listed_with_version_provenance_and_tenant_sc
     try:
         async with session_factory() as session, session.begin():
             store = SqlAlchemyIngestionJobStore(session)
+            document_store = SqlAlchemyDocumentStore(session)
             claimed = await store.claim_next_job("worker-a", lease_seconds=60)
             assert claimed is not None
             verifying = await store.transition_job(
@@ -328,6 +334,24 @@ async def test_published_chunks_are_listed_with_version_provenance_and_tenant_sc
                 IngestionJobState.CHUNKING,
                 progress=70,
                 reason="test_chunking",
+            )
+            provider = DeterministicLocalEmbeddingProvider(make_settings())
+            batch = await provider.embed(
+                [
+                    EmbeddingRequest(
+                        item_id=claimed.id,
+                        text="Atlas keeps tenant data isolated.",
+                    )
+                ]
+            )
+            embedding_set = await document_store.active_embedding_set(
+                claimed.workspace_id,
+                provider=provider.provider,
+                model=provider.model,
+                model_version=provider.model_version,
+                dimension=provider.dimension,
+                normalized=provider.normalized,
+                config={"zero_cost": True, "storage": "postgres_jsonb_exact_cosine"},
             )
             completed = await store.publish_document_version(
                 claimed.id,
@@ -347,6 +371,14 @@ async def test_published_chunks_are_listed_with_version_provenance_and_tenant_sc
                         ).hexdigest(),
                         text="Atlas keeps tenant data isolated.",
                         safe_metadata={"source_blocks": 2},
+                    )
+                ],
+                embedding_set=embedding_set,
+                embeddings=[
+                    ChunkEmbeddingDraftRecord(
+                        chunk_ordinal=0,
+                        vector=batch.items[0].vector,
+                        token_count=batch.items[0].token_count,
                     )
                 ],
                 parser_name="atlas-text-parser",
@@ -372,6 +404,8 @@ async def test_published_chunks_are_listed_with_version_provenance_and_tenant_sc
     version = versions.json()["items"][0]
     assert version["parser_name"] == "atlas-text-parser"
     assert version["chunk_count"] == 1
+    assert version["embedding_count"] == 1
+    assert version["embedding_set_id"]
     assert version["token_count"] == 6
 
     chunks = await client.get(
@@ -387,3 +421,186 @@ async def test_published_chunks_are_listed_with_version_provenance_and_tenant_sc
         headers=bob_headers,
     )
     assert cross_tenant.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_semantic_search_returns_authorized_evidence(
+    client: AsyncClient,
+    alice_headers: dict[str, str],
+    bob_headers: dict[str, str],
+) -> None:
+    workspace = await create_workspace(client, alice_headers, key="phase4-search")
+    workspace_id = str(workspace["id"])
+    source = await create_source(client, alice_headers, workspace_id)
+    intent = await create_uploaded_intent(
+        client,
+        alice_headers,
+        workspace_id,
+        (
+            b"# Reliability\n\nRetries recover failed worker crashes.\n\n"
+            b"# Billing\n\nInvoices are exported monthly."
+        ),
+        filename="runbook.md",
+        media_type="text/markdown",
+    )
+    finalize = await client.post(
+        f"/v1/workspaces/{workspace_id}/uploads/{intent['id']}/finalize",
+        headers={**alice_headers, "Idempotency-Key": "finalize-phase4-search"},
+        json={"source_id": source["id"], "title": "Operations Runbook"},
+    )
+    assert finalize.status_code == 201, finalize.text
+    version_id = finalize.json()["document_version"]["id"]
+
+    engine = create_engine(make_settings())
+    session_factory = create_session_factory(engine)
+    try:
+        async with session_factory() as session, session.begin():
+            store = SqlAlchemyIngestionJobStore(session)
+            document_store = SqlAlchemyDocumentStore(session)
+            claimed = await store.claim_next_job("worker-a", lease_seconds=60)
+            assert claimed is not None
+            verifying = await store.transition_job(
+                claimed.id,
+                "worker-a",
+                claimed.version,
+                IngestionJobState.VERIFYING,
+                progress=35,
+                reason="test_verify",
+            )
+            chunking = await store.transition_job(
+                claimed.id,
+                "worker-a",
+                verifying.version,
+                IngestionJobState.CHUNKING,
+                progress=70,
+                reason="test_chunking",
+            )
+            provider = DeterministicLocalEmbeddingProvider(make_settings())
+            batch = await provider.embed(
+                [
+                    EmbeddingRequest(
+                        item_id=claimed.id, text="Retries recover failed worker crashes."
+                    ),
+                    EmbeddingRequest(
+                        item_id=uuid.UUID(source["id"]), text="Invoices are exported monthly."
+                    ),
+                ]
+            )
+            embedding_set = await document_store.active_embedding_set(
+                claimed.workspace_id,
+                provider=provider.provider,
+                model=provider.model,
+                model_version=provider.model_version,
+                dimension=provider.dimension,
+                normalized=provider.normalized,
+                config={"zero_cost": True, "storage": "postgres_jsonb_exact_cosine"},
+            )
+            completed = await store.publish_document_version(
+                claimed.id,
+                "worker-a",
+                chunking.version,
+                chunks=[
+                    ChunkDraftRecord(
+                        ordinal=0,
+                        block_type="section",
+                        heading="Reliability",
+                        page_number=None,
+                        start_char=0,
+                        end_char=39,
+                        token_count=5,
+                        content_hash=hashlib.sha256(
+                            b"Retries recover failed worker crashes."
+                        ).hexdigest(),
+                        text="Retries recover failed worker crashes.",
+                        safe_metadata={"source_blocks": 2},
+                    ),
+                    ChunkDraftRecord(
+                        ordinal=1,
+                        block_type="section",
+                        heading="Billing",
+                        page_number=None,
+                        start_char=40,
+                        end_char=70,
+                        token_count=4,
+                        content_hash=hashlib.sha256(b"Invoices are exported monthly.").hexdigest(),
+                        text="Invoices are exported monthly.",
+                        safe_metadata={"source_blocks": 4},
+                    ),
+                ],
+                embedding_set=embedding_set,
+                embeddings=[
+                    ChunkEmbeddingDraftRecord(
+                        chunk_ordinal=0,
+                        vector=batch.items[0].vector,
+                        token_count=batch.items[0].token_count,
+                    ),
+                    ChunkEmbeddingDraftRecord(
+                        chunk_ordinal=1,
+                        vector=batch.items[1].vector,
+                        token_count=batch.items[1].token_count,
+                    ),
+                ],
+                parser_name="atlas-text-parser",
+                parser_version="test",
+                chunker_name="atlas-paragraph-chunker",
+                chunker_version="test",
+                normalized_object_key=f"workspaces/{workspace_id}/derived/{version_id}/normalized.json",
+                normalized_digest_sha256=hashlib.sha256(b"normalized").hexdigest(),
+                character_count=70,
+                token_count=9,
+                safe_metadata={"media_type": "text/markdown"},
+            )
+            assert completed.state == IngestionJobState.SUCCEEDED
+    finally:
+        await engine.dispose()
+
+    search = await client.post(
+        f"/v1/workspaces/{workspace_id}/search/semantic",
+        headers=alice_headers,
+        json={"query": "worker retry crash recovery", "top_k": 3, "debug": True},
+    )
+    assert search.status_code == 200, search.text
+    payload = search.json()
+    assert payload["debug"]["paid_services"] is False
+    assert payload["items"]
+    assert payload["items"][0]["document_title"] == "Operations Runbook"
+    assert "Retries recover failed worker crashes" in payload["items"][0]["snippet"]
+    assert payload["items"][0]["embedding_set_id"]
+
+    backfill = await client.post(
+        f"/v1/workspaces/{workspace_id}/embeddings/backfill",
+        headers=alice_headers,
+        json={"limit": 10},
+    )
+    assert backfill.status_code == 200, backfill.text
+    assert backfill.json()["embedded_count"] == 0
+    assert backfill.json()["missing_after"] == 0
+
+    cross_tenant_search = await client.post(
+        f"/v1/workspaces/{workspace_id}/search/semantic",
+        headers=bob_headers,
+        json={"query": "worker retry crash recovery", "top_k": 3},
+    )
+    assert cross_tenant_search.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_semantic_search_rejects_invalid_bounds(
+    client: AsyncClient,
+    alice_headers: dict[str, str],
+) -> None:
+    workspace = await create_workspace(client, alice_headers, key="phase4-bounds")
+    workspace_id = str(workspace["id"])
+    empty_query = await client.post(
+        f"/v1/workspaces/{workspace_id}/search/semantic",
+        headers=alice_headers,
+        json={"query": "   ", "top_k": 3},
+    )
+    assert empty_query.status_code == 422
+
+    too_many = await client.post(
+        f"/v1/workspaces/{workspace_id}/search/semantic",
+        headers=alice_headers,
+        json={"query": "tenant isolation", "top_k": 21},
+    )
+    assert too_many.status_code == 422

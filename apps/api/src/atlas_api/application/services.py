@@ -4,12 +4,21 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from atlas_api.application.embeddings import (
+    DeterministicLocalEmbeddingProvider,
+    EmbeddingBatchPlanner,
+    EmbeddingRequest,
+)
 from atlas_api.application.ports import (
+    ChunkEmbeddingWriteRecord,
     ChunkRecord,
     DocumentRecord,
     DocumentVersionRecord,
+    EmbeddingBackfillResult,
     IngestionJobRecord,
     MemberRecord,
+    SemanticSearchCandidate,
+    SemanticSearchFilter,
     SourceRecord,
     TransactionFactory,
     UploadIntentRecord,
@@ -426,3 +435,144 @@ class DocumentService:
         if len(filename) > 255:
             raise ValidationError("The upload filename is too long.")
         return filename
+
+
+class SemanticSearchService:
+    def __init__(
+        self,
+        transaction_factory: TransactionFactory,
+        settings: Settings,
+    ) -> None:
+        self._transactions = transaction_factory
+        self._settings = settings
+        self._provider = DeterministicLocalEmbeddingProvider(settings)
+
+    async def search(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        query: str,
+        top_k: int | None,
+        filters: SemanticSearchFilter,
+    ) -> tuple[list[SemanticSearchCandidate], dict[str, object]]:
+        clean_query = " ".join(query.split())
+        if not clean_query:
+            raise ValidationError("Search query must not be empty.")
+        if len(clean_query) > self._settings.embedding_max_text_chars:
+            raise ValidationError("Search query exceeds the configured length limit.")
+        limit = top_k or self._settings.semantic_search_default_top_k
+        if not 1 <= limit <= self._settings.semantic_search_max_top_k:
+            raise ValidationError("top_k is outside the configured search bounds.")
+
+        batch = await self._provider.embed(
+            [EmbeddingRequest(item_id=uuid.uuid4(), text=clean_query)]
+        )
+        query_vector = batch.items[0].vector
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.DOCUMENT_READ)
+            embedding_set = await tx.documents.active_embedding_set(
+                workspace_id,
+                provider=batch.provider,
+                model=batch.model,
+                model_version=batch.model_version,
+                dimension=batch.dimension,
+                normalized=batch.normalized,
+                config={
+                    "zero_cost": True,
+                    "storage": "postgres_jsonb_exact_cosine",
+                    "external_provider": False,
+                },
+            )
+            candidates = await tx.documents.semantic_search(
+                actor=actor,
+                workspace_id=workspace_id,
+                embedding_set_id=embedding_set.id,
+                query_vector=query_vector,
+                top_k=limit,
+                filters=filters,
+            )
+        debug = {
+            "provider": batch.provider,
+            "model": batch.model,
+            "model_version": batch.model_version,
+            "dimension": batch.dimension,
+            "normalized": batch.normalized,
+            "vector_store": "postgres_jsonb_exact_cosine",
+            "paid_services": False,
+        }
+        return candidates, debug
+
+    async def backfill_missing_embeddings(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        limit: int,
+    ) -> EmbeddingBackfillResult:
+        if not 1 <= limit <= self._settings.max_chunks_per_document:
+            raise ValidationError("Backfill limit is outside the configured bounds.")
+
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.INGESTION_JOB_MANAGE)
+            embedding_set = await tx.documents.active_embedding_set(
+                workspace_id,
+                provider=self._provider.provider,
+                model=self._provider.model,
+                model_version=self._provider.model_version,
+                dimension=self._provider.dimension,
+                normalized=self._provider.normalized,
+                config={
+                    "zero_cost": True,
+                    "storage": "postgres_jsonb_exact_cosine",
+                    "external_provider": False,
+                },
+            )
+            coverage_before = await tx.documents.embedding_coverage(workspace_id, embedding_set.id)
+            missing = await tx.documents.list_missing_embedding_chunks(
+                workspace_id, embedding_set.id, limit=limit
+            )
+
+        planner = EmbeddingBatchPlanner(
+            max_items=self._settings.embedding_batch_size,
+            max_text_chars=self._settings.embedding_max_text_chars,
+        )
+        requests = [EmbeddingRequest(item_id=item.chunk_id, text=item.text) for item in missing]
+        vectors_by_chunk: dict[uuid.UUID, tuple[list[float], int]] = {}
+        for batch_requests in planner.batches(requests):
+            batch = await self._provider.embed(batch_requests)
+            for item in batch.items:
+                vectors_by_chunk[item.item_id] = (item.vector, item.token_count)
+
+        async with self._transactions() as tx:
+            embedded_count = await tx.documents.write_chunk_embeddings(
+                workspace_id,
+                embedding_set.id,
+                [
+                    ChunkEmbeddingWriteRecord(
+                        chunk_id=item.chunk_id,
+                        document_version_id=item.document_version_id,
+                        vector=vectors_by_chunk[item.chunk_id][0],
+                        token_count=vectors_by_chunk[item.chunk_id][1],
+                    )
+                    for item in missing
+                ],
+            )
+            coverage_after = await tx.documents.embedding_coverage(workspace_id, embedding_set.id)
+
+        return EmbeddingBackfillResult(
+            embedding_set_id=embedding_set.id,
+            missing_before=max(
+                coverage_before.total_ready_chunks - coverage_before.embedded_ready_chunks, 0
+            ),
+            embedded_count=embedded_count,
+            missing_after=max(
+                coverage_after.total_ready_chunks - coverage_after.embedded_ready_chunks, 0
+            ),
+        )

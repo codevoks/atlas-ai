@@ -24,16 +24,17 @@ import {
   getMembers,
   getSources,
   getWorkspace,
+  semanticSearch,
 } from "@/lib/api";
 
 interface WorkspacePageProps {
   params: Promise<{ workspaceId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; semanticQuery?: string }>;
 }
 
 export default async function WorkspacePage({ params, searchParams }: WorkspacePageProps) {
   const { workspaceId } = await params;
-  const { error } = await searchParams;
+  const { error, semanticQuery } = await searchParams;
   let me;
   let workspace;
   let members;
@@ -81,6 +82,10 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
   const firstChunkByDocument = new Map(
     previewPairs.map((pair) => [pair.documentId, pair.chunks[0]]),
   );
+  const cleanSemanticQuery = semanticQuery ? semanticQuery.split(/\s+/).join(" ").slice(0, 4000) : "";
+  const semanticResults = cleanSemanticQuery
+    ? await semanticSearch(workspaceId, cleanSemanticQuery)
+    : null;
 
   return (
     <main className="app-shell">
@@ -103,6 +108,59 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
           ) : null}
         </div>
         {error ? <p className="alert" role="alert">{error}</p> : null}
+
+        <section className="search-panel">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Semantic retrieval</p>
+              <h2>Search grounded evidence</h2>
+            </div>
+            {semanticResults ? <span className="count">{semanticResults.items.length}</span> : null}
+          </div>
+          <form className="search-form" method="get">
+            <label className="sr-only" htmlFor="semantic-query">Semantic query</label>
+            <input
+              id="semantic-query"
+              name="semanticQuery"
+              maxLength={4000}
+              defaultValue={cleanSemanticQuery}
+              placeholder="Search incidents, policies, customer themes..."
+            />
+            <button className="button primary" type="submit">Search evidence</button>
+          </form>
+          {semanticResults ? (
+            <div className="search-results">
+              <p className="muted">
+                Zero-cost deterministic embedding search · trace {semanticResults.trace_id}
+              </p>
+              {semanticResults.items.map((item) => (
+                <article className="search-result" key={item.chunk_id}>
+                  <div>
+                    <strong>{item.document_title}</strong>
+                    <small>
+                      chunk {item.ordinal} · score {item.score.toFixed(3)} · distance{" "}
+                      {item.distance.toFixed(3)}
+                    </small>
+                  </div>
+                  <p>“{item.snippet}”</p>
+                  <small className="mono">
+                    {item.embedding_model}@{item.embedding_model_version} · set{" "}
+                    {item.embedding_set_id}
+                  </small>
+                </article>
+              ))}
+              {semanticResults.items.length === 0 ? (
+                <div className="empty-state">
+                  <p>No authorized evidence matched this query yet.</p>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <p className="muted">
+              Upload and ingest text or Markdown, then search the embedded chunks as evidence.
+            </p>
+          )}
+        </section>
 
         <div className="members-layout">
           <section>
@@ -175,7 +233,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
             <aside className="side-panel">
               <p className="eyebrow">Direct upload</p><h2>Add a document</h2>
               <p className="muted">
-                Phase 3 parses UTF-8 text/Markdown and publishes deterministic chunks. Retrieval is introduced later.
+                Atlas parses UTF-8 text/Markdown, embeds deterministic chunks, and exposes semantic evidence search.
               </p>
               {sources.length === 0 ? (
                 <p className="alert">Create a source before uploading documents.</p>

@@ -11,14 +11,22 @@ from sqlalchemy import Select, and_, delete, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from atlas_api.application.embeddings import cosine_similarity
 from atlas_api.application.ports import (
     ChunkDraftRecord,
+    ChunkEmbeddingDraftRecord,
+    ChunkEmbeddingWriteRecord,
     ChunkRecord,
     DocumentRecord,
     DocumentStore,
     DocumentVersionRecord,
+    EmbeddingCoverageRecord,
+    EmbeddingSetRecord,
     IngestionJobRecord,
     MemberRecord,
+    MissingEmbeddingChunkRecord,
+    SemanticSearchCandidate,
+    SemanticSearchFilter,
     SourceRecord,
     Transaction,
     UploadIntentRecord,
@@ -28,8 +36,10 @@ from atlas_api.application.ports import (
 from atlas_api.domain.errors import ConflictError, ResourceNotFoundError
 from atlas_api.domain.models import (
     Actor,
+    ChunkEmbeddingStatus,
     DocumentStatus,
     DocumentVersionStatus,
+    EmbeddingSetStatus,
     IdentityClaims,
     IngestionJobState,
     MembershipContext,
@@ -42,9 +52,11 @@ from atlas_api.domain.models import (
 )
 from atlas_api.infrastructure.models import (
     AuditEventModel,
+    ChunkEmbeddingModel,
     ChunkModel,
     DocumentModel,
     DocumentVersionModel,
+    EmbeddingSetModel,
     IdempotencyRecordModel,
     IngestionJobModel,
     JobEventModel,
@@ -888,6 +900,234 @@ class SqlAlchemyDocumentStore:
         )
         return self._job_record(job)
 
+    async def active_embedding_set(
+        self,
+        workspace_id: uuid.UUID,
+        *,
+        provider: str,
+        model: str,
+        model_version: str,
+        dimension: int,
+        normalized: bool,
+        config: dict[str, object],
+    ) -> EmbeddingSetRecord:
+        existing = await self._session.scalar(
+            select(EmbeddingSetModel).where(
+                EmbeddingSetModel.workspace_id == workspace_id,
+                EmbeddingSetModel.provider == provider,
+                EmbeddingSetModel.model == model,
+                EmbeddingSetModel.model_version == model_version,
+                EmbeddingSetModel.dimension == dimension,
+                EmbeddingSetModel.normalized == normalized,
+            )
+        )
+        if existing is None:
+            existing = EmbeddingSetModel(
+                workspace_id=workspace_id,
+                provider=provider,
+                model=model,
+                model_version=model_version,
+                dimension=dimension,
+                normalized=normalized,
+                config=config,
+                status=EmbeddingSetStatus.ACTIVE.value,
+            )
+            self._session.add(existing)
+            await self._session.flush()
+        elif existing.status != EmbeddingSetStatus.ACTIVE.value:
+            existing.status = EmbeddingSetStatus.ACTIVE.value
+            existing.config = config
+        return self._embedding_set_record(existing)
+
+    async def semantic_search(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        embedding_set_id: uuid.UUID,
+        query_vector: list[float],
+        top_k: int,
+        filters: SemanticSearchFilter,
+    ) -> list[SemanticSearchCandidate]:
+        statement = (
+            select(
+                ChunkEmbeddingModel,
+                ChunkModel,
+                DocumentVersionModel,
+                DocumentModel,
+                EmbeddingSetModel,
+            )
+            .join(ChunkModel, ChunkModel.id == ChunkEmbeddingModel.chunk_id)
+            .join(
+                DocumentVersionModel,
+                DocumentVersionModel.id == ChunkEmbeddingModel.document_version_id,
+            )
+            .join(DocumentModel, DocumentModel.id == DocumentVersionModel.document_id)
+            .join(EmbeddingSetModel, EmbeddingSetModel.id == ChunkEmbeddingModel.embedding_set_id)
+            .where(
+                ChunkEmbeddingModel.workspace_id == workspace_id,
+                ChunkEmbeddingModel.embedding_set_id == embedding_set_id,
+                ChunkEmbeddingModel.status == ChunkEmbeddingStatus.READY.value,
+                ChunkModel.workspace_id == workspace_id,
+                DocumentVersionModel.workspace_id == workspace_id,
+                DocumentVersionModel.status == DocumentVersionStatus.READY.value,
+                DocumentVersionModel.active.is_(True),
+                DocumentModel.workspace_id == workspace_id,
+                DocumentModel.status == DocumentStatus.ACTIVE.value,
+                EmbeddingSetModel.workspace_id == workspace_id,
+                EmbeddingSetModel.status == EmbeddingSetStatus.ACTIVE.value,
+            )
+        )
+        if filters.source_id is not None:
+            statement = statement.where(DocumentModel.source_id == filters.source_id)
+        if filters.document_id is not None:
+            statement = statement.where(DocumentModel.id == filters.document_id)
+        rows = (await self._session.execute(statement)).all()
+        candidates: list[SemanticSearchCandidate] = []
+        for embedding, chunk, version, document, embedding_set in rows:
+            if len(embedding.vector) != embedding_set.dimension:
+                continue
+            score = cosine_similarity(query_vector, [float(value) for value in embedding.vector])
+            candidates.append(
+                SemanticSearchCandidate(
+                    chunk_id=chunk.id,
+                    document_id=document.id,
+                    document_version_id=version.id,
+                    source_id=document.source_id,
+                    document_title=document.title,
+                    ordinal=chunk.ordinal,
+                    heading=chunk.heading,
+                    block_type=chunk.block_type,
+                    start_char=chunk.start_char,
+                    end_char=chunk.end_char,
+                    snippet=self._snippet(chunk.text),
+                    distance=round(1.0 - score, 10),
+                    score=round(score, 10),
+                    embedding_set_id=embedding_set.id,
+                    embedding_provider=embedding_set.provider,
+                    embedding_model=embedding_set.model,
+                    embedding_model_version=embedding_set.model_version,
+                )
+            )
+        return sorted(candidates, key=lambda item: (-item.score, item.chunk_id.hex))[:top_k]
+
+    async def embedding_coverage(
+        self, workspace_id: uuid.UUID, embedding_set_id: uuid.UUID
+    ) -> EmbeddingCoverageRecord:
+        total = await self._session.scalar(
+            select(func.count(ChunkModel.id))
+            .join(DocumentVersionModel, DocumentVersionModel.id == ChunkModel.document_version_id)
+            .join(DocumentModel, DocumentModel.id == DocumentVersionModel.document_id)
+            .where(
+                ChunkModel.workspace_id == workspace_id,
+                DocumentVersionModel.workspace_id == workspace_id,
+                DocumentVersionModel.status == DocumentVersionStatus.READY.value,
+                DocumentVersionModel.active.is_(True),
+                DocumentModel.workspace_id == workspace_id,
+                DocumentModel.status == DocumentStatus.ACTIVE.value,
+            )
+        )
+        embedded = await self._session.scalar(
+            select(func.count(ChunkEmbeddingModel.id))
+            .join(ChunkModel, ChunkModel.id == ChunkEmbeddingModel.chunk_id)
+            .join(DocumentVersionModel, DocumentVersionModel.id == ChunkModel.document_version_id)
+            .join(DocumentModel, DocumentModel.id == DocumentVersionModel.document_id)
+            .where(
+                ChunkEmbeddingModel.workspace_id == workspace_id,
+                ChunkEmbeddingModel.embedding_set_id == embedding_set_id,
+                ChunkEmbeddingModel.status == ChunkEmbeddingStatus.READY.value,
+                DocumentVersionModel.workspace_id == workspace_id,
+                DocumentVersionModel.status == DocumentVersionStatus.READY.value,
+                DocumentVersionModel.active.is_(True),
+                DocumentModel.workspace_id == workspace_id,
+                DocumentModel.status == DocumentStatus.ACTIVE.value,
+            )
+        )
+        return EmbeddingCoverageRecord(
+            workspace_id=workspace_id,
+            embedding_set_id=embedding_set_id,
+            total_ready_chunks=int(total or 0),
+            embedded_ready_chunks=int(embedded or 0),
+        )
+
+    async def list_missing_embedding_chunks(
+        self, workspace_id: uuid.UUID, embedding_set_id: uuid.UUID, *, limit: int
+    ) -> list[MissingEmbeddingChunkRecord]:
+        rows = (
+            await self._session.scalars(
+                select(ChunkModel)
+                .join(
+                    DocumentVersionModel, DocumentVersionModel.id == ChunkModel.document_version_id
+                )
+                .join(DocumentModel, DocumentModel.id == DocumentVersionModel.document_id)
+                .outerjoin(
+                    ChunkEmbeddingModel,
+                    and_(
+                        ChunkEmbeddingModel.chunk_id == ChunkModel.id,
+                        ChunkEmbeddingModel.embedding_set_id == embedding_set_id,
+                    ),
+                )
+                .where(
+                    ChunkModel.workspace_id == workspace_id,
+                    ChunkEmbeddingModel.id.is_(None),
+                    DocumentVersionModel.workspace_id == workspace_id,
+                    DocumentVersionModel.status == DocumentVersionStatus.READY.value,
+                    DocumentVersionModel.active.is_(True),
+                    DocumentModel.workspace_id == workspace_id,
+                    DocumentModel.status == DocumentStatus.ACTIVE.value,
+                )
+                .order_by(ChunkModel.document_version_id.asc(), ChunkModel.ordinal.asc())
+                .limit(limit)
+            )
+        ).all()
+        return [
+            MissingEmbeddingChunkRecord(
+                chunk_id=row.id,
+                document_version_id=row.document_version_id,
+                ordinal=row.ordinal,
+                text=row.text,
+            )
+            for row in rows
+        ]
+
+    async def write_chunk_embeddings(
+        self,
+        workspace_id: uuid.UUID,
+        embedding_set_id: uuid.UUID,
+        embeddings: list[ChunkEmbeddingWriteRecord],
+    ) -> int:
+        if not embeddings:
+            return 0
+        existing = set(
+            (
+                await self._session.scalars(
+                    select(ChunkEmbeddingModel.chunk_id).where(
+                        ChunkEmbeddingModel.workspace_id == workspace_id,
+                        ChunkEmbeddingModel.embedding_set_id == embedding_set_id,
+                        ChunkEmbeddingModel.chunk_id.in_([item.chunk_id for item in embeddings]),
+                    )
+                )
+            ).all()
+        )
+        written = 0
+        for embedding in embeddings:
+            if embedding.chunk_id in existing:
+                continue
+            self._session.add(
+                ChunkEmbeddingModel(
+                    workspace_id=workspace_id,
+                    chunk_id=embedding.chunk_id,
+                    document_version_id=embedding.document_version_id,
+                    embedding_set_id=embedding_set_id,
+                    vector=embedding.vector,
+                    status=ChunkEmbeddingStatus.READY.value,
+                    token_count=embedding.token_count,
+                )
+            )
+            written += 1
+        await self._session.flush()
+        return written
+
     async def _document_record(self, document: DocumentModel) -> DocumentRecord:
         latest_version = await self._session.scalar(
             select(DocumentVersionModel)
@@ -991,6 +1231,8 @@ class SqlAlchemyDocumentStore:
             chunk_count=version.chunk_count,
             character_count=version.character_count,
             token_count=version.token_count,
+            embedding_set_id=version.embedding_set_id,
+            embedding_count=version.embedding_count,
             safe_metadata=version.safe_metadata,
         )
 
@@ -1012,6 +1254,26 @@ class SqlAlchemyDocumentStore:
             safe_metadata=chunk.safe_metadata,
             created_at=chunk.created_at,
         )
+
+    @staticmethod
+    def _embedding_set_record(embedding_set: EmbeddingSetModel) -> EmbeddingSetRecord:
+        return EmbeddingSetRecord(
+            id=embedding_set.id,
+            workspace_id=embedding_set.workspace_id,
+            provider=embedding_set.provider,
+            model=embedding_set.model,
+            model_version=embedding_set.model_version,
+            dimension=embedding_set.dimension,
+            normalized=embedding_set.normalized,
+            config=embedding_set.config,
+            status=EmbeddingSetStatus(embedding_set.status),
+            created_at=embedding_set.created_at,
+        )
+
+    @staticmethod
+    def _snippet(text_value: str) -> str:
+        collapsed = " ".join(text_value.split())
+        return collapsed[:240] + ("…" if len(collapsed) > 240 else "")
 
     @staticmethod
     def _job_record(job: IngestionJobModel) -> IngestionJobRecord:
@@ -1103,6 +1365,7 @@ class SqlAlchemyIngestionJobStore:
                                 IngestionJobState.PARSING.value,
                                 IngestionJobState.NORMALIZING.value,
                                 IngestionJobState.CHUNKING.value,
+                                IngestionJobState.EMBEDDING.value,
                                 IngestionJobState.PUBLISHING.value,
                             ]
                         ),
@@ -1180,6 +1443,7 @@ class SqlAlchemyIngestionJobStore:
             IngestionJobState.PARSING: DocumentVersionStatus.PARSING,
             IngestionJobState.NORMALIZING: DocumentVersionStatus.NORMALIZING,
             IngestionJobState.CHUNKING: DocumentVersionStatus.CHUNKING,
+            IngestionJobState.EMBEDDING: DocumentVersionStatus.EMBEDDING,
             IngestionJobState.CANCELLED: DocumentVersionStatus.CANCELLED,
             IngestionJobState.FAILED: DocumentVersionStatus.FAILED,
         }
@@ -1204,6 +1468,8 @@ class SqlAlchemyIngestionJobStore:
         expected_job_version: int,
         *,
         chunks: Sequence[ChunkDraftRecord] = (),
+        embedding_set: EmbeddingSetRecord | None = None,
+        embeddings: Sequence[ChunkEmbeddingDraftRecord] = (),
         parser_name: str | None = None,
         parser_version: str | None = None,
         chunker_name: str | None = None,
@@ -1235,21 +1501,43 @@ class SqlAlchemyIngestionJobStore:
             await self._session.execute(
                 delete(ChunkModel).where(ChunkModel.document_version_id == version.id)
             )
+            chunks_by_ordinal: dict[int, ChunkModel] = {}
             for chunk in chunks:
+                row = ChunkModel(
+                    workspace_id=version.workspace_id,
+                    document_version_id=version.id,
+                    ordinal=chunk.ordinal,
+                    block_type=chunk.block_type,
+                    heading=chunk.heading,
+                    page_number=chunk.page_number,
+                    start_char=chunk.start_char,
+                    end_char=chunk.end_char,
+                    token_count=chunk.token_count,
+                    content_hash=chunk.content_hash,
+                    text=chunk.text,
+                    safe_metadata=chunk.safe_metadata,
+                )
+                self._session.add(row)
+                chunks_by_ordinal[chunk.ordinal] = row
+            await self._session.flush()
+            if embedding_set is None or len(embeddings) != len(chunks):
+                raise ConflictError("Document publication requires complete embeddings.")
+            embeddings_by_ordinal = {item.chunk_ordinal: item for item in embeddings}
+            if set(embeddings_by_ordinal) != set(chunks_by_ordinal):
+                raise ConflictError("Embedding ordinals do not match published chunks.")
+            for embedding in embeddings:
+                if len(embedding.vector) != embedding_set.dimension:
+                    raise ConflictError("Embedding vector dimension does not match its set.")
+                chunk_row = chunks_by_ordinal[embedding.chunk_ordinal]
                 self._session.add(
-                    ChunkModel(
+                    ChunkEmbeddingModel(
                         workspace_id=version.workspace_id,
+                        chunk_id=chunk_row.id,
                         document_version_id=version.id,
-                        ordinal=chunk.ordinal,
-                        block_type=chunk.block_type,
-                        heading=chunk.heading,
-                        page_number=chunk.page_number,
-                        start_char=chunk.start_char,
-                        end_char=chunk.end_char,
-                        token_count=chunk.token_count,
-                        content_hash=chunk.content_hash,
-                        text=chunk.text,
-                        safe_metadata=chunk.safe_metadata,
+                        embedding_set_id=embedding_set.id,
+                        vector=embedding.vector,
+                        status=ChunkEmbeddingStatus.READY.value,
+                        token_count=embedding.token_count,
                     )
                 )
             version.parser_name = parser_name
@@ -1259,6 +1547,8 @@ class SqlAlchemyIngestionJobStore:
             version.normalized_object_key = normalized_object_key
             version.normalized_digest_sha256 = normalized_digest_sha256
             version.chunk_count = len(chunks)
+            version.embedding_set_id = embedding_set.id
+            version.embedding_count = len(embeddings)
             version.character_count = character_count
             version.token_count = token_count
             version.safe_metadata = safe_metadata or {}

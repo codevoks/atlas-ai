@@ -28,7 +28,7 @@ Browser (untrusted)
 Next.js web/BFF ---------------- identity provider
    | service-authenticated HTTPS
 FastAPI control/query plane
-   |---- PostgreSQL + pgvector (authoritative metadata/index initially)
+   |---- PostgreSQL (authoritative metadata and exact vector baseline)
    |---- Object storage (immutable source artifacts)
    |---- Redis (queue/cache/rate coordination; non-authoritative)
    |---- Model/embedding/reranking provider adapters
@@ -52,7 +52,7 @@ Trust boundaries exist at the browser, service ingress, tenant authorization lay
 | `apps/web` | Product UI, session UX, server-side BFF calls, safe rendering | Domain authorization, direct database/provider access |
 | `apps/api` | Auth context, use cases, REST contracts, transactions, search/RAG orchestration | Long-running parsing/embedding, provider-specific logic in routes |
 | `apps/worker` | Durable job consumption, ingestion/reindex/research steps, heartbeats/retries | Browser concerns, bypassing domain authorization rules |
-| PostgreSQL | Tenants, memberships, sources, document versions, jobs, chunks, embeddings initially, evaluations, runs, audit references | Large source blobs, ephemeral locks as the only correctness mechanism |
+| PostgreSQL | Tenants, memberships, sources, document versions, jobs, chunks, embedding sets, exact vector baseline, evaluations, runs, audit references | Large source blobs, ephemeral locks as the only correctness mechanism |
 | Object storage | Immutable uploaded/raw/derived artifacts with tenant-prefixed keys | Authorization decisions, mutable job state |
 | Redis | Broker/queue coordination, cache, distributed rate/budget primitives | System of record |
 | Provider adapters | Typed embedding/generation/reranking/tool interfaces, deterministic local fakes for tests/demos, timeout/error normalization | Business policy, direct paid external calls by default |
@@ -62,13 +62,13 @@ Trust boundaries exist at the browser, service ingress, tenant authorization lay
 
 Logical code boundaries inside API/worker are `domain`, `application`, `infrastructure`, `retrieval`, `ai`, `api`, and worker entrypoints. Imports point inward: domain has no framework/provider dependencies; application depends on ports; infrastructure implements ports; routes and job consumers adapt external input.
 
-## Current implemented baseline after Phase 3
+## Current implemented baseline after Phase 4
 
-The repository currently implements the control-plane foundation plus the storage, ingestion, parsing, normalization, and chunking slice: `apps/web`, `apps/api`, `apps/worker`, `packages/config`, and `packages/shared-types`. The API owns identity resolution, workspace use cases, RBAC policy, SQLAlchemy persistence, Alembic migrations, audit events, source/document/upload/chunk contracts, signed local upload handling, and OpenAPI export. The web app owns local sign-in UX, server-side BFF calls, workspace/member/source/document screens, direct-upload orchestration, chunk preview display, Tailwind CSS styling, and security headers. The worker owns deterministic ingestion-job claiming, lease/version checks, object integrity verification, text/Markdown parsing, canonical normalization, deterministic chunking, derived artifact writes, and atomic chunk publication.
+The repository currently implements the control-plane foundation plus the storage, ingestion, parsing, normalization, chunking, embedding, and semantic-evidence retrieval slice: `apps/web`, `apps/api`, `apps/worker`, `packages/config`, and `packages/shared-types`. The API owns identity resolution, workspace use cases, RBAC policy, SQLAlchemy persistence, Alembic migrations, audit events, source/document/upload/chunk/search contracts, signed local upload handling, semantic retrieval, and OpenAPI export. The web app owns local sign-in UX, server-side BFF calls, workspace/member/source/document screens, direct-upload orchestration, chunk preview display, semantic evidence search UI, Tailwind CSS styling, and security headers. The worker owns deterministic ingestion-job claiming, lease/version checks, object integrity verification, text/Markdown parsing, canonical normalization, deterministic chunking, deterministic local embedding batches, derived artifact writes, and atomic chunk/embedding publication.
 
-The implemented persistent tables are `users`, `workspaces`, `memberships`, `audit_events`, `idempotency_records`, `sources`, `upload_intents`, `documents`, `document_versions`, `ingestion_jobs`, `job_events`, and `chunks`. Local development uses a filesystem-backed object-store adapter with tenant-prefixed keys, HMAC-signed upload URLs, immutable uploaded objects, and normalized derived artifacts; production object storage remains behind the same adapter boundary.
+The implemented persistent tables are `users`, `workspaces`, `memberships`, `audit_events`, `idempotency_records`, `sources`, `upload_intents`, `documents`, `document_versions`, `ingestion_jobs`, `job_events`, `chunks`, `embedding_sets`, and `chunk_embeddings`. Local development uses a filesystem-backed object-store adapter with tenant-prefixed keys, HMAC-signed upload URLs, immutable uploaded objects, and normalized derived artifacts; production object storage remains behind the same adapter boundary.
 
-Phase 3 intentionally supports a small text-first parser surface: `text/plain`, Markdown-like media types, and `.txt`/`.md`/`.markdown` filenames. Unsupported, binary, PDF, archive, and invalid-UTF-8 files fail safely without publishing chunks. Malware scanning, PDF/office/OCR extraction, embeddings, retrieval, generation, evaluations, Redis-backed coordination, and external object-storage credentials remain deferred to later phases. The Phase 3 build/test/demo path is zero-cost: local PostgreSQL, local filesystem object storage, deterministic development authentication, deterministic parser/chunker logic, and no model-provider or cloud API calls.
+Phase 4 intentionally supports a small text-first parser surface and deterministic local hash embeddings. Unsupported, binary, PDF, archive, and invalid-UTF-8 files fail safely without publishing chunks or embeddings. Semantic retrieval returns typed evidence only; it does not generate answers, rerank, run hybrid retrieval, or call a hosted model. Malware scanning, PDF/office/OCR extraction, lexical/hybrid retrieval, generation, evaluations, Redis-backed coordination, external object-storage credentials, hosted embedding providers, and ANN vector indexes remain deferred to later phases. The Phase 4 build/test/demo path is zero-cost: local PostgreSQL, local filesystem object storage, deterministic development authentication, deterministic parser/chunker/embedding logic, exact cosine retrieval over stored normalized vectors, and no model-provider or cloud API calls.
 
 ## Canonical data model
 
@@ -79,11 +79,11 @@ All tenant-owned tables include `workspace_id`, even when derivable, to make fil
 - `memberships`: `(workspace_id, user_id)`, role, status; unique membership.
 - `sources`: logical origin and source type; no secret values in ordinary columns.
 - `documents`: stable logical document within a source/workspace.
-- `document_versions`: immutable content version, object key, digest, media type, size, ingest status, parser/chunker provenance, normalized artifact pointer/digest, aggregate counts, active/publication state.
+- `document_versions`: immutable content version, object key, digest, media type, size, ingest status, parser/chunker provenance, normalized artifact pointer/digest, aggregate counts, embedding-set coverage, active/publication state.
 - `ingestion_jobs`: durable state machine, attempt count, idempotency key, lease/heartbeat, error class, progress, requested configuration.
 - `chunks`: immutable chunk identity tied to document version; ordinal/page/span, text or protected text reference, token count, metadata, content hash, chunker version.
-- `embedding_sets`: model/provider/dimension/configuration and lifecycle for migrations.
-- `chunk_embeddings`: `(chunk_id, embedding_set_id)`, vector, status; coexistence enables model migration.
+- `embedding_sets`: workspace-scoped provider/model/version/dimension/normalization/configuration and lifecycle for migrations.
+- `chunk_embeddings`: `(chunk_id, embedding_set_id)`, normalized vector, status, token count; coexistence enables model migration.
 - `search_queries`: optional redacted/debuggable query execution metadata with retention controls.
 - `answer_runs`: query, model/config versions, status, token/cost/latency, policy outcome.
 - `answer_evidence`: ordered immutable references to chunk versions, retrieval scores/stages, quoted span.
@@ -102,14 +102,15 @@ Database invariants include composite tenant-aware foreign keys where practical,
 2. Client uploads via short-lived signed URL. API finalizes by verifying object metadata/digest and creates the document version plus durable job in one transaction.
 3. Finalization creates the document, immutable document version, ingestion job, job event, audit event, and idempotency record in one PostgreSQL transaction.
 4. The worker claims jobs with `FOR UPDATE SKIP LOCKED`, a lease owner, heartbeat timestamp, attempt counters, expected version, and bounded retry states.
-5. Phase 3 worker execution verifies stored object size/digest, rejects unsupported or unsafe file classes, parses supported text/Markdown input, normalizes text, writes a normalized derived artifact, creates deterministic chunks, and atomically publishes the document version as ready with chunk/provenance metadata.
+5. Worker execution verifies stored object size/digest, rejects unsupported or unsafe file classes, parses supported text/Markdown input, normalizes text, writes a normalized derived artifact, creates deterministic chunks, embeds chunks against the active embedding set, and atomically publishes the document version as ready with chunk/provenance/embedding metadata.
 6. Cancellation is cooperative. Dead-letter state preserves diagnosable error metadata and a safe replay path.
 
 ### Search
 
 1. API derives workspace/user authorization context; it never accepts workspace authority from the request alone.
 2. Validate query, filters, limits, rate/cost budget, and visibility policy.
-3. Generate lexical and semantic candidates over `READY` versions with identical tenant/ACL filters.
+3. Phase 4 semantic retrieval embeds the query with the configured deterministic provider, loads only authorized `READY` active version embeddings inside the tenant/status filter path, ranks candidates with exact cosine similarity, and returns typed evidence.
+4. Later phases add lexical candidates, hybrid fusion, reranking, context construction, and grounded answer generation.
 4. Fuse ranked lists (initially RRF), optionally rerank, and return typed evidence plus stage diagnostics when authorized.
 5. Cache only with workspace, authorization fingerprint, index/version/config, and normalized-query keys; default to no cross-user cache until proven safe.
 
@@ -130,7 +131,7 @@ Primary resource groups:
 - `/v1/workspaces`, `/members`, `/roles` — tenancy and RBAC.
 - `/v1/sources`, `/documents`, `/document-versions`, `/uploads` — source lifecycle.
 - `/v1/ingestion-jobs/{id}` and cancellation/retry commands — asynchronous status.
-- `/v1/search` — typed evidence and optional privileged debug stages.
+- `/v1/workspaces/{workspace_id}/search/semantic` — typed semantic evidence and bounded debug metadata.
 - `/v1/answers` and `/answer-runs/{id}` — synchronous initially within strict timeout or asynchronous when needed.
 - `/v1/evaluation-datasets`, `/evaluation-runs` — admin/developer workflows.
 - `/v1/research-runs`, `/steps`, `/approvals` — bounded workflow control.

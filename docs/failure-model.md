@@ -41,4 +41,4 @@ Fail closed for identity, authorization, tenant ambiguity, active-version public
 
 Each phase adds crash-point tests and an operator-visible repair path. Production hardening proves PostgreSQL restore, object recovery/versioning policy, derived-index rebuild, migration rollback/forward-fix, job reconciliation, checkpoint resume, secret rotation, and deletion propagation. A backup is not a recovery capability until restored and timed.
 
-Phase 3 recovery evidence covers deterministic parser/chunker unit tests, corrupt/binary/unsupported input failure tests, parser byte-limit enforcement, chunk-count enforcement, and integration coverage that published chunks remain tenant-scoped and are written only with ready document-version metadata.
+Phase 4 recovery evidence covers deterministic parser/chunker/embedding tests, corrupt/binary/unsupported input failure tests, parser byte-limit enforcement, chunk-count enforcement, embedding dimension/normalization checks, semantic-search bounds checks, and integration coverage that published chunks/embeddings remain tenant-scoped and are written only with ready document-version metadata.

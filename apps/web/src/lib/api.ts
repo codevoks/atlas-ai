@@ -17,6 +17,32 @@ export type IngestionJob = components["schemas"]["IngestionJobResponse"];
 export type UploadIntent = components["schemas"]["UploadIntentResponse"];
 export type UploadFinalizeResult = components["schemas"]["UploadFinalizeResponse"];
 
+export interface Evidence {
+  chunk_id: string;
+  document_id: string;
+  document_version_id: string;
+  source_id: string;
+  document_title: string;
+  ordinal: number;
+  heading: string | null;
+  block_type: string;
+  start_char: number;
+  end_char: number;
+  snippet: string;
+  distance: number;
+  score: number;
+  embedding_set_id: string;
+  embedding_provider: string;
+  embedding_model: string;
+  embedding_model_version: string;
+}
+
+export interface SemanticSearchResult {
+  items: Evidence[];
+  trace_id: string;
+  debug: Record<string, unknown> | null;
+}
+
 interface ApiErrorPayload {
   error?: { code?: string; message?: string; request_id?: string };
 }
@@ -112,4 +138,14 @@ export async function getIngestionJob(
   jobId: string,
 ): Promise<IngestionJob> {
   return apiRequest<IngestionJob>(`/v1/workspaces/${workspaceId}/ingestion-jobs/${jobId}`);
+}
+
+export async function semanticSearch(
+  workspaceId: string,
+  query: string,
+): Promise<SemanticSearchResult> {
+  return apiRequest<SemanticSearchResult>(`/v1/workspaces/${workspaceId}/search/semantic`, {
+    method: "POST",
+    body: JSON.stringify({ query, top_k: 5, debug: true }),
+  });
 }

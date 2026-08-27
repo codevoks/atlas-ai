@@ -22,7 +22,8 @@ async def client() -> AsyncIterator[AsyncClient]:
             await connection.execute(
                 text(
                     "TRUNCATE chunks, job_events, ingestion_jobs, document_versions, documents, "
-                    "upload_intents, sources, idempotency_records, audit_events, "
+                    "chunk_embeddings, embedding_sets, upload_intents, sources, "
+                    "idempotency_records, audit_events, "
                     "memberships, workspaces, users RESTART IDENTITY CASCADE"
                 )
             )

@@ -55,6 +55,7 @@ class DocumentVersionStatus(StrEnum):
     PARSING = "parsing"
     NORMALIZING = "normalizing"
     CHUNKING = "chunking"
+    EMBEDDING = "embedding"
     READY = "ready"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -74,6 +75,7 @@ class IngestionJobState(StrEnum):
     PARSING = "parsing"
     NORMALIZING = "normalizing"
     CHUNKING = "chunking"
+    EMBEDDING = "embedding"
     PUBLISHING = "publishing"
     SUCCEEDED = "succeeded"
     RETRY_WAIT = "retry_wait"
@@ -87,6 +89,16 @@ class RetryClass(StrEnum):
     PERMANENT = "permanent"
     INTEGRITY = "integrity"
     CANCELLED = "cancelled"
+
+
+class EmbeddingSetStatus(StrEnum):
+    ACTIVE = "active"
+    DEPRECATED = "deprecated"
+
+
+class ChunkEmbeddingStatus(StrEnum):
+    READY = "ready"
+    FAILED = "failed"
 
 
 @dataclass(frozen=True, slots=True)

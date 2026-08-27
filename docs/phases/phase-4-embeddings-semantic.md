@@ -16,6 +16,8 @@ Add embedding provider port/adapter with deterministic local fake as the default
 
 Add `embedding_sets` (provider/model/version/dimension/normalization/config/status) and `chunk_embeddings` keyed by chunk and set, with vector and completion status. Document publication requires the configured active set to be complete; old sets coexist during migration. Add vector index only after baseline/query plan inspection; dimension changes require new storage/index strategy, never in-place reinterpretation.
 
+Phase 4 implementation note: the required zero-cost path stores deterministic normalized vectors in PostgreSQL JSONB and uses exact cosine ranking after tenant/status filtering. pgvector remains the first ANN/index candidate, but enabling it requires an explicit local image/extension migration plus recall/latency/query-plan evidence.
+
 ## APIs
 
 `POST /v1/search/semantic` or unified `/v1/search` mode with query, typed metadata filters, `top_k`, and bounded authorized debug flag. Admin APIs/commands create backfill and inspect embedding-set coverage, not raw unrestricted vectors. Response `Evidence` includes chunk/version IDs, source span, snippet, distance/normalized score, embedding-set ID, and trace ID.

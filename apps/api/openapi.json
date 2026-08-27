@@ -1066,6 +1066,122 @@
         }
       }
     },
+    "/v1/workspaces/{workspace_id}/search/semantic": {
+      "post": {
+        "tags": [
+          "search"
+        ],
+        "summary": "Semantic Search",
+        "operationId": "semantic_search_v1_workspaces__workspace_id__search_semantic_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SemanticSearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SemanticSearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/embeddings/backfill": {
+      "post": {
+        "tags": [
+          "search"
+        ],
+        "summary": "Backfill Embeddings",
+        "operationId": "backfill_embeddings_v1_workspaces__workspace_id__embeddings_backfill_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbeddingBackfillRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddingBackfillResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/workspaces/{workspace_id}/ingestion-jobs/{job_id}": {
       "get": {
         "tags": [
@@ -1605,6 +1721,23 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Safe Metadata"
+          },
+          "embedding_set_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Set Id"
+          },
+          "embedding_count": {
+            "type": "integer",
+            "title": "Embedding Count",
+            "default": 0
           }
         },
         "type": "object",
@@ -1632,11 +1765,159 @@
           "parsing",
           "normalizing",
           "chunking",
+          "embedding",
           "ready",
           "failed",
           "cancelled"
         ],
         "title": "DocumentVersionStatus"
+      },
+      "EmbeddingBackfillRequest": {
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "default": 100
+          }
+        },
+        "type": "object",
+        "title": "EmbeddingBackfillRequest"
+      },
+      "EmbeddingBackfillResponse": {
+        "properties": {
+          "embedding_set_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Embedding Set Id"
+          },
+          "missing_before": {
+            "type": "integer",
+            "title": "Missing Before"
+          },
+          "embedded_count": {
+            "type": "integer",
+            "title": "Embedded Count"
+          },
+          "missing_after": {
+            "type": "integer",
+            "title": "Missing After"
+          }
+        },
+        "type": "object",
+        "required": [
+          "embedding_set_id",
+          "missing_before",
+          "embedded_count",
+          "missing_after"
+        ],
+        "title": "EmbeddingBackfillResponse"
+      },
+      "EvidenceResponse": {
+        "properties": {
+          "chunk_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Chunk Id"
+          },
+          "document_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Version Id"
+          },
+          "source_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Id"
+          },
+          "document_title": {
+            "type": "string",
+            "title": "Document Title"
+          },
+          "ordinal": {
+            "type": "integer",
+            "title": "Ordinal"
+          },
+          "heading": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heading"
+          },
+          "block_type": {
+            "type": "string",
+            "title": "Block Type"
+          },
+          "start_char": {
+            "type": "integer",
+            "title": "Start Char"
+          },
+          "end_char": {
+            "type": "integer",
+            "title": "End Char"
+          },
+          "snippet": {
+            "type": "string",
+            "title": "Snippet"
+          },
+          "distance": {
+            "type": "number",
+            "title": "Distance"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "embedding_set_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Embedding Set Id"
+          },
+          "embedding_provider": {
+            "type": "string",
+            "title": "Embedding Provider"
+          },
+          "embedding_model": {
+            "type": "string",
+            "title": "Embedding Model"
+          },
+          "embedding_model_version": {
+            "type": "string",
+            "title": "Embedding Model Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "chunk_id",
+          "document_id",
+          "document_version_id",
+          "source_id",
+          "document_title",
+          "ordinal",
+          "heading",
+          "block_type",
+          "start_char",
+          "end_char",
+          "snippet",
+          "distance",
+          "score",
+          "embedding_set_id",
+          "embedding_provider",
+          "embedding_model",
+          "embedding_model_version"
+        ],
+        "title": "EvidenceResponse"
       },
       "HTTPValidationError": {
         "properties": {
@@ -1815,6 +2096,7 @@
           "parsing",
           "normalizing",
           "chunking",
+          "embedding",
           "publishing",
           "succeeded",
           "retry_wait",
@@ -1942,6 +2224,105 @@
           "viewer"
         ],
         "title": "Role"
+      },
+      "SemanticSearchFilters": {
+        "properties": {
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          }
+        },
+        "type": "object",
+        "title": "SemanticSearchFilters"
+      },
+      "SemanticSearchRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Query"
+          },
+          "top_k": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 20.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top K"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/SemanticSearchFilters"
+          },
+          "debug": {
+            "type": "boolean",
+            "title": "Debug",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "SemanticSearchRequest"
+      },
+      "SemanticSearchResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "debug": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debug"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "trace_id"
+        ],
+        "title": "SemanticSearchResponse"
       },
       "SourceCreate": {
         "properties": {

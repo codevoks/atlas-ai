@@ -11,7 +11,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from atlas_api.application.ports import ChunkDraftRecord
+from atlas_api.application.embeddings import (
+    DeterministicLocalEmbeddingProvider,
+    EmbeddingBatchPlanner,
+    EmbeddingRequest,
+)
+from atlas_api.application.ports import ChunkDraftRecord, ChunkEmbeddingDraftRecord
 from atlas_api.config import Settings, get_settings
 from atlas_api.domain.errors import (
     DomainError,
@@ -22,7 +27,10 @@ from atlas_api.domain.models import IngestionJobState, RetryClass, UploadIntentS
 from atlas_api.infrastructure.database import create_engine, create_session_factory
 from atlas_api.infrastructure.models import UploadIntentModel
 from atlas_api.infrastructure.object_store import LocalObjectStore
-from atlas_api.infrastructure.repositories import SqlAlchemyIngestionJobStore
+from atlas_api.infrastructure.repositories import (
+    SqlAlchemyDocumentStore,
+    SqlAlchemyIngestionJobStore,
+)
 from atlas_worker.ingestion import (
     CHUNKER_NAME,
     CHUNKER_VERSION,
@@ -269,10 +277,60 @@ async def _run_once(
 
     async with session_factory() as session, session.begin():
         store = SqlAlchemyIngestionJobStore(session)
-        publishing = await store.transition_job(
+        embedding = await store.transition_job(
             claimed.id,
             worker_id,
             chunking.version,
+            IngestionJobState.EMBEDDING,
+            progress=78,
+            reason="embedding_started",
+        )
+
+    embedding_provider = DeterministicLocalEmbeddingProvider(settings)
+    batch_planner = EmbeddingBatchPlanner(
+        max_items=settings.embedding_batch_size,
+        max_text_chars=settings.embedding_max_text_chars,
+    )
+    embedding_requests = [
+        EmbeddingRequest(
+            item_id=uuid.uuid5(version.id, str(chunk.ordinal)), text=chunk.text
+        )
+        for chunk in chunks
+    ]
+    embeddings_by_item_id = {}
+    try:
+        for batch_requests in batch_planner.batches(embedding_requests):
+            batch = await embedding_provider.embed(batch_requests)
+            for item in batch.items:
+                embeddings_by_item_id[item.item_id] = item
+    except DomainError as error:
+        async with session_factory() as session, session.begin():
+            store = SqlAlchemyIngestionJobStore(session)
+            failed = await store.transition_job(
+                claimed.id,
+                worker_id,
+                embedding.version,
+                IngestionJobState.FAILED,
+                progress=78,
+                reason="embedding_failed",
+                error_class=RetryClass.PERMANENT,
+                error_code=error.code,
+                error_message=str(error),
+            )
+        return RunOnceResponse(
+            claimed=True,
+            job_id=failed.id,
+            state=failed.state,
+            progress=failed.progress,
+            error_code=failed.error_code,
+        )
+
+    async with session_factory() as session, session.begin():
+        store = SqlAlchemyIngestionJobStore(session)
+        publishing = await store.transition_job(
+            claimed.id,
+            worker_id,
+            embedding.version,
             IngestionJobState.PUBLISHING,
             progress=85,
             reason="publish_started",
@@ -280,6 +338,20 @@ async def _run_once(
 
     async with session_factory() as session, session.begin():
         store = SqlAlchemyIngestionJobStore(session)
+        document_store = SqlAlchemyDocumentStore(session)
+        embedding_set = await document_store.active_embedding_set(
+            version.workspace_id,
+            provider=embedding_provider.provider,
+            model=embedding_provider.model,
+            model_version=embedding_provider.model_version,
+            dimension=embedding_provider.dimension,
+            normalized=embedding_provider.normalized,
+            config={
+                "zero_cost": True,
+                "storage": "postgres_jsonb_exact_cosine",
+                "external_provider": False,
+            },
+        )
         completed = await store.publish_document_version(
             claimed.id,
             worker_id,
@@ -296,6 +368,19 @@ async def _run_once(
                     content_hash=chunk.content_hash,
                     text=chunk.text,
                     safe_metadata=chunk.safe_metadata,
+                )
+                for chunk in chunks
+            ],
+            embedding_set=embedding_set,
+            embeddings=[
+                ChunkEmbeddingDraftRecord(
+                    chunk_ordinal=chunk.ordinal,
+                    vector=embeddings_by_item_id[
+                        uuid.uuid5(version.id, str(chunk.ordinal))
+                    ].vector,
+                    token_count=embeddings_by_item_id[
+                        uuid.uuid5(version.id, str(chunk.ordinal))
+                    ].token_count,
                 )
                 for chunk in chunks
             ],

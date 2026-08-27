@@ -9,8 +9,10 @@ from atlas_api.application.ports import (
     ChunkRecord,
     DocumentRecord,
     DocumentVersionRecord,
+    EmbeddingBackfillResult,
     IngestionJobRecord,
     MemberRecord,
+    SemanticSearchCandidate,
     SourceRecord,
     UploadIntentRecord,
     WorkspaceRecord,
@@ -233,6 +235,8 @@ class DocumentVersionResponse(BaseModel):
     character_count: int = 0
     token_count: int = 0
     safe_metadata: dict[str, object] = Field(default_factory=dict)
+    embedding_set_id: uuid.UUID | None = None
+    embedding_count: int = 0
 
     @classmethod
     def from_record(cls, record: DocumentVersionRecord) -> DocumentVersionResponse:
@@ -257,6 +261,8 @@ class DocumentVersionResponse(BaseModel):
             chunk_count=record.chunk_count,
             character_count=record.character_count,
             token_count=record.token_count,
+            embedding_set_id=record.embedding_set_id,
+            embedding_count=record.embedding_count,
             safe_metadata=record.safe_metadata or {},
         )
 
@@ -353,6 +359,86 @@ class UploadFinalizeResponse(BaseModel):
     document: DocumentResponse
     document_version: DocumentVersionResponse
     ingestion_job: IngestionJobResponse
+
+
+class SemanticSearchFilters(BaseModel):
+    source_id: uuid.UUID | None = None
+    document_id: uuid.UUID | None = None
+
+
+class SemanticSearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=4_000)
+    top_k: int | None = Field(default=None, ge=1, le=20)
+    filters: SemanticSearchFilters = Field(default_factory=SemanticSearchFilters)
+    debug: bool = False
+
+
+class EvidenceResponse(BaseModel):
+    chunk_id: uuid.UUID
+    document_id: uuid.UUID
+    document_version_id: uuid.UUID
+    source_id: uuid.UUID
+    document_title: str
+    ordinal: int
+    heading: str | None
+    block_type: str
+    start_char: int
+    end_char: int
+    snippet: str
+    distance: float
+    score: float
+    embedding_set_id: uuid.UUID
+    embedding_provider: str
+    embedding_model: str
+    embedding_model_version: str
+
+    @classmethod
+    def from_candidate(cls, candidate: SemanticSearchCandidate) -> EvidenceResponse:
+        return cls(
+            chunk_id=candidate.chunk_id,
+            document_id=candidate.document_id,
+            document_version_id=candidate.document_version_id,
+            source_id=candidate.source_id,
+            document_title=candidate.document_title,
+            ordinal=candidate.ordinal,
+            heading=candidate.heading,
+            block_type=candidate.block_type,
+            start_char=candidate.start_char,
+            end_char=candidate.end_char,
+            snippet=candidate.snippet,
+            distance=candidate.distance,
+            score=candidate.score,
+            embedding_set_id=candidate.embedding_set_id,
+            embedding_provider=candidate.embedding_provider,
+            embedding_model=candidate.embedding_model,
+            embedding_model_version=candidate.embedding_model_version,
+        )
+
+
+class SemanticSearchResponse(BaseModel):
+    items: list[EvidenceResponse]
+    trace_id: str
+    debug: dict[str, object] | None = None
+
+
+class EmbeddingBackfillRequest(BaseModel):
+    limit: int = Field(default=100, ge=1, le=500)
+
+
+class EmbeddingBackfillResponse(BaseModel):
+    embedding_set_id: uuid.UUID
+    missing_before: int
+    embedded_count: int
+    missing_after: int
+
+    @classmethod
+    def from_result(cls, result: EmbeddingBackfillResult) -> EmbeddingBackfillResponse:
+        return cls(
+            embedding_set_id=result.embedding_set_id,
+            missing_before=result.missing_before,
+            embedded_count=result.embedded_count,
+            missing_after=result.missing_after,
+        )
 
 
 class HealthResponse(BaseModel):

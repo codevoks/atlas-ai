@@ -198,7 +198,7 @@ class DocumentVersionModel(TimestampMixin, Base):
         CheckConstraint(
             "status IN ("
             "'upload_pending','ingestion_pending','verifying','parsing','normalizing',"
-            "'chunking','ready','failed','cancelled'"
+            "'chunking','embedding','ready','failed','cancelled'"
             ")",
             name="valid_document_version_status",
         ),
@@ -239,6 +239,10 @@ class DocumentVersionModel(TimestampMixin, Base):
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     character_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    embedding_set_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("embedding_sets.id", ondelete="SET NULL"), nullable=True
+    )
+    embedding_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     safe_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     created_by_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
@@ -252,7 +256,7 @@ class IngestionJobModel(TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint(
             "state IN ('pending','claimed','verifying','publishing','succeeded','retry_wait',"
-            "'parsing','normalizing','chunking','cancel_requested','cancelled','failed')",
+            "'parsing','normalizing','chunking','embedding','cancel_requested','cancelled','failed')",
             name="valid_ingestion_job_state",
         ),
         UniqueConstraint("workspace_id", "document_version_id", name="uq_ingestion_jobs_version"),
@@ -340,3 +344,63 @@ class ChunkModel(TimestampMixin, Base):
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     safe_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+
+
+class EmbeddingSetModel(TimestampMixin, Base):
+    __tablename__ = "embedding_sets"
+    __table_args__ = (
+        CheckConstraint("dimension >= 8", name="valid_embedding_dimension"),
+        CheckConstraint("status IN ('active','deprecated')", name="valid_embedding_set_status"),
+        UniqueConstraint(
+            "workspace_id",
+            "provider",
+            "model",
+            "model_version",
+            "dimension",
+            "normalized",
+            name="uq_embedding_sets_space",
+        ),
+        Index("ix_embedding_sets_workspace_status", "workspace_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    provider: Mapped[str] = mapped_column(String(80), nullable=False)
+    model: Mapped[str] = mapped_column(String(160), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    dimension: Mapped[int] = mapped_column(Integer, nullable=False)
+    normalized: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    config: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="active")
+
+
+class ChunkEmbeddingModel(TimestampMixin, Base):
+    __tablename__ = "chunk_embeddings"
+    __table_args__ = (
+        CheckConstraint("token_count >= 0", name="valid_chunk_embedding_token_count"),
+        CheckConstraint("status IN ('ready','failed')", name="valid_chunk_embedding_status"),
+        UniqueConstraint("chunk_id", "embedding_set_id", name="uq_chunk_embeddings_chunk_set"),
+        Index("ix_chunk_embeddings_workspace_set", "workspace_id", "embedding_set_id"),
+        Index("ix_chunk_embeddings_version_set", "document_version_id", "embedding_set_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    chunk_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("chunks.id", ondelete="CASCADE"), nullable=False
+    )
+    document_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("document_versions.id", ondelete="CASCADE"), nullable=False
+    )
+    embedding_set_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("embedding_sets.id", ondelete="RESTRICT"), nullable=False
+    )
+    vector: Mapped[list[float]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="ready")
+    token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)

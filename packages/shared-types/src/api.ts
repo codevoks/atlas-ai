@@ -265,6 +265,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workspaces/{workspace_id}/search/semantic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Semantic Search */
+        post: operations["semantic_search_v1_workspaces__workspace_id__search_semantic_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workspaces/{workspace_id}/embeddings/backfill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Backfill Embeddings */
+        post: operations["backfill_embeddings_v1_workspaces__workspace_id__embeddings_backfill_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workspaces/{workspace_id}/ingestion-jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -473,12 +507,93 @@ export interface components {
             safe_metadata?: {
                 [key: string]: unknown;
             };
+            /** Embedding Set Id */
+            embedding_set_id?: string | null;
+            /**
+             * Embedding Count
+             * @default 0
+             */
+            embedding_count: number;
         };
         /**
          * DocumentVersionStatus
          * @enum {string}
          */
-        DocumentVersionStatus: "upload_pending" | "ingestion_pending" | "verifying" | "parsing" | "normalizing" | "chunking" | "ready" | "failed" | "cancelled";
+        DocumentVersionStatus: "upload_pending" | "ingestion_pending" | "verifying" | "parsing" | "normalizing" | "chunking" | "embedding" | "ready" | "failed" | "cancelled";
+        /** EmbeddingBackfillRequest */
+        EmbeddingBackfillRequest: {
+            /**
+             * Limit
+             * @default 100
+             */
+            limit: number;
+        };
+        /** EmbeddingBackfillResponse */
+        EmbeddingBackfillResponse: {
+            /**
+             * Embedding Set Id
+             * Format: uuid
+             */
+            embedding_set_id: string;
+            /** Missing Before */
+            missing_before: number;
+            /** Embedded Count */
+            embedded_count: number;
+            /** Missing After */
+            missing_after: number;
+        };
+        /** EvidenceResponse */
+        EvidenceResponse: {
+            /**
+             * Chunk Id
+             * Format: uuid
+             */
+            chunk_id: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /**
+             * Document Version Id
+             * Format: uuid
+             */
+            document_version_id: string;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Document Title */
+            document_title: string;
+            /** Ordinal */
+            ordinal: number;
+            /** Heading */
+            heading: string | null;
+            /** Block Type */
+            block_type: string;
+            /** Start Char */
+            start_char: number;
+            /** End Char */
+            end_char: number;
+            /** Snippet */
+            snippet: string;
+            /** Distance */
+            distance: number;
+            /** Score */
+            score: number;
+            /**
+             * Embedding Set Id
+             * Format: uuid
+             */
+            embedding_set_id: string;
+            /** Embedding Provider */
+            embedding_provider: string;
+            /** Embedding Model */
+            embedding_model: string;
+            /** Embedding Model Version */
+            embedding_model_version: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -540,7 +655,7 @@ export interface components {
          * IngestionJobState
          * @enum {string}
          */
-        IngestionJobState: "pending" | "claimed" | "verifying" | "parsing" | "normalizing" | "chunking" | "publishing" | "succeeded" | "retry_wait" | "cancel_requested" | "cancelled" | "failed";
+        IngestionJobState: "pending" | "claimed" | "verifying" | "parsing" | "normalizing" | "chunking" | "embedding" | "publishing" | "succeeded" | "retry_wait" | "cancel_requested" | "cancelled" | "failed";
         /** MeResponse */
         MeResponse: {
             /**
@@ -594,6 +709,37 @@ export interface components {
          * @enum {string}
          */
         Role: "owner" | "admin" | "member" | "viewer";
+        /** SemanticSearchFilters */
+        SemanticSearchFilters: {
+            /** Source Id */
+            source_id?: string | null;
+            /** Document Id */
+            document_id?: string | null;
+        };
+        /** SemanticSearchRequest */
+        SemanticSearchRequest: {
+            /** Query */
+            query: string;
+            /** Top K */
+            top_k?: number | null;
+            filters?: components["schemas"]["SemanticSearchFilters"];
+            /**
+             * Debug
+             * @default false
+             */
+            debug: boolean;
+        };
+        /** SemanticSearchResponse */
+        SemanticSearchResponse: {
+            /** Items */
+            items: components["schemas"]["EvidenceResponse"][];
+            /** Trace Id */
+            trace_id: string;
+            /** Debug */
+            debug?: {
+                [key: string]: unknown;
+            } | null;
+        };
         /** SourceCreate */
         SourceCreate: {
             /** Name */
@@ -1375,6 +1521,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChunkListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    semantic_search_v1_workspaces__workspace_id__search_semantic_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SemanticSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SemanticSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    backfill_embeddings_v1_workspaces__workspace_id__embeddings_backfill_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmbeddingBackfillRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbeddingBackfillResponse"];
                 };
             };
             /** @description Validation Error */

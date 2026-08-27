@@ -45,15 +45,17 @@ Workspace --< AuditEvent
 - At most one version per document is active/published. A version can be published only after all configured mandatory stages succeed.
 - Deletion prevents new reads immediately from the source of truth and propagates tombstones to derived indexes/caches asynchronously.
 
-Phase 3 implemented tables:
+Phase 4 implemented tables:
 
 - `sources`: workspace-scoped upload source registry with active/disabled state.
 - `upload_intents`: tenant-prefixed object key, creator, declared filename, media type, byte size, digest, expiry, lifecycle status, and finalized document-version reference.
 - `documents`: logical workspace document identity tied to a source and creator.
-- `document_versions`: immutable object reference, digest, media type, size, version number, active flag, parser/chunker names and versions, normalized artifact key/digest, aggregate chunk/character/token counts, safe metadata, and ingestion status.
+- `document_versions`: immutable object reference, digest, media type, size, version number, active flag, parser/chunker names and versions, normalized artifact key/digest, aggregate chunk/character/token counts, embedding-set coverage, safe metadata, and ingestion status.
 - `ingestion_jobs`: durable ingestion state, lease owner/expiry, heartbeat, progress, bounded attempts, cancellation flag, idempotency key, retry timing, and safe error fields.
 - `job_events`: append-only safe state-transition history.
 - `chunks`: immutable deterministic chunk rows scoped by workspace and document version, ordered by ordinal, with structural coordinates, token counts, content hashes, text, and safe metadata.
+- `embedding_sets`: workspace-scoped provider/model/version/dimension/normalization/config lifecycle rows for vector-space provenance and migration.
+- `chunk_embeddings`: one normalized vector per `(chunk_id, embedding_set_id)` with status and token count. Phase 4 stores vectors as PostgreSQL JSONB for the zero-cost exact-cosine baseline; pgvector ANN indexes remain an evidence-gated migration.
 
 ### Jobs
 
@@ -72,24 +74,24 @@ Transitions require expected state/version and a valid lease when worker-owned. 
 
 The durable record and its outbox/job visibility are created in one database transaction. If a transport is later introduced, delivery is a hint to claim authoritative work, not the work itself.
 
-Phase 3 implements this prefix of the full retrieval-ingestion state machine:
+Phase 4 implements this prefix of the full retrieval-ingestion state machine:
 
 ```text
 PENDING -> CLAIMED -> VERIFYING -> PARSING -> NORMALIZING -> CHUNKING
-        -> PUBLISHING -> SUCCEEDED
+        -> EMBEDDING -> PUBLISHING -> SUCCEEDED
 PENDING|CLAIMED -> CANCEL_REQUESTED -> CANCELLED
-VERIFYING|PARSING|CHUNKING -> FAILED
+VERIFYING|PARSING|CHUNKING|EMBEDDING -> FAILED
 FAILED|RETRY_WAIT -> PENDING by authorized retry
 ```
 
-Embedding, retrieval indexing, and finer stage-level checkpoints are intentionally deferred until later retrieval phases.
+Lexical retrieval, hybrid fusion, reranking, generation, and finer stage-level checkpoints are intentionally deferred until later retrieval phases.
 
 ### Chunks and embeddings
 
 - A chunk belongs to exactly one immutable document version and chunker/config version; ordinal and source span are deterministic.
 - Chunk text/metadata has bounds and a content hash. Duplicate processing upserts or detects the same deterministic identity.
 - An embedding belongs to one chunk and one embedding set. Set defines provider/model/version/dimension/normalization/config.
-- Vectors from different embedding sets are never compared. Multiple sets coexist during backfill; promotion is atomic after coverage/evaluation.
+- Vectors from different embedding sets are never compared. Multiple sets coexist during migration; promotion is atomic after coverage/evaluation.
 
 ### Evidence, answers, and citations
 

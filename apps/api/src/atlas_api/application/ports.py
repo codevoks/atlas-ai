@@ -8,8 +8,10 @@ from typing import Protocol
 
 from atlas_api.domain.models import (
     Actor,
+    ChunkEmbeddingStatus,
     DocumentStatus,
     DocumentVersionStatus,
+    EmbeddingSetStatus,
     IngestionJobState,
     MembershipContext,
     Role,
@@ -96,6 +98,8 @@ class DocumentVersionRecord:
     chunk_count: int = 0
     character_count: int = 0
     token_count: int = 0
+    embedding_set_id: uuid.UUID | None = None
+    embedding_count: int = 0
     safe_metadata: dict[str, object] | None = None
 
 
@@ -129,6 +133,98 @@ class ChunkDraftRecord:
     content_hash: str
     text: str
     safe_metadata: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class ChunkEmbeddingDraftRecord:
+    chunk_ordinal: int
+    vector: list[float]
+    token_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class ChunkEmbeddingWriteRecord:
+    chunk_id: uuid.UUID
+    document_version_id: uuid.UUID
+    vector: list[float]
+    token_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class MissingEmbeddingChunkRecord:
+    chunk_id: uuid.UUID
+    document_version_id: uuid.UUID
+    ordinal: int
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class EmbeddingSetRecord:
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    provider: str
+    model: str
+    model_version: str
+    dimension: int
+    normalized: bool
+    config: dict[str, object]
+    status: EmbeddingSetStatus
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ChunkEmbeddingRecord:
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    chunk_id: uuid.UUID
+    document_version_id: uuid.UUID
+    embedding_set_id: uuid.UUID
+    status: ChunkEmbeddingStatus
+    token_count: int
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticSearchFilter:
+    source_id: uuid.UUID | None = None
+    document_id: uuid.UUID | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticSearchCandidate:
+    chunk_id: uuid.UUID
+    document_id: uuid.UUID
+    document_version_id: uuid.UUID
+    source_id: uuid.UUID
+    document_title: str
+    ordinal: int
+    heading: str | None
+    block_type: str
+    start_char: int
+    end_char: int
+    snippet: str
+    distance: float
+    score: float
+    embedding_set_id: uuid.UUID
+    embedding_provider: str
+    embedding_model: str
+    embedding_model_version: str
+
+
+@dataclass(frozen=True, slots=True)
+class EmbeddingCoverageRecord:
+    workspace_id: uuid.UUID
+    embedding_set_id: uuid.UUID
+    total_ready_chunks: int
+    embedded_ready_chunks: int
+
+
+@dataclass(frozen=True, slots=True)
+class EmbeddingBackfillResult:
+    embedding_set_id: uuid.UUID
+    missing_before: int
+    embedded_count: int
+    missing_after: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,6 +366,44 @@ class DocumentStore(Protocol):
     async def retry_job(
         self, actor: Actor, workspace_id: uuid.UUID, job_id: uuid.UUID, request_id: str
     ) -> IngestionJobRecord: ...
+
+    async def active_embedding_set(
+        self,
+        workspace_id: uuid.UUID,
+        *,
+        provider: str,
+        model: str,
+        model_version: str,
+        dimension: int,
+        normalized: bool,
+        config: dict[str, object],
+    ) -> EmbeddingSetRecord: ...
+
+    async def semantic_search(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        embedding_set_id: uuid.UUID,
+        query_vector: list[float],
+        top_k: int,
+        filters: SemanticSearchFilter,
+    ) -> list[SemanticSearchCandidate]: ...
+
+    async def embedding_coverage(
+        self, workspace_id: uuid.UUID, embedding_set_id: uuid.UUID
+    ) -> EmbeddingCoverageRecord: ...
+
+    async def list_missing_embedding_chunks(
+        self, workspace_id: uuid.UUID, embedding_set_id: uuid.UUID, *, limit: int
+    ) -> list[MissingEmbeddingChunkRecord]: ...
+
+    async def write_chunk_embeddings(
+        self,
+        workspace_id: uuid.UUID,
+        embedding_set_id: uuid.UUID,
+        embeddings: list[ChunkEmbeddingWriteRecord],
+    ) -> int: ...
 
 
 class Transaction(Protocol):

@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     chunk_target_chars: int = 900
     chunk_overlap_chars: int = 120
     max_chunks_per_document: int = 500
+    embedding_provider: Literal["deterministic-local"] = "deterministic-local"
+    embedding_model: str = "atlas-local-hash-embedding"
+    embedding_model_version: str = "2026-08-27"
+    embedding_dimension: int = 32
+    embedding_batch_size: int = 32
+    embedding_max_text_chars: int = 4_000
+    semantic_search_default_top_k: int = 5
+    semantic_search_max_top_k: int = 20
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -58,6 +66,16 @@ class Settings(BaseSettings):
             raise ValueError("CHUNK_OVERLAP_CHARS must be non-negative and smaller than target")
         if self.max_chunks_per_document < 1:
             raise ValueError("MAX_CHUNKS_PER_DOCUMENT must be positive")
+        if self.embedding_dimension < 8:
+            raise ValueError("EMBEDDING_DIMENSION must be at least 8")
+        if self.embedding_batch_size < 1:
+            raise ValueError("EMBEDDING_BATCH_SIZE must be positive")
+        if self.embedding_max_text_chars < 100:
+            raise ValueError("EMBEDDING_MAX_TEXT_CHARS must be at least 100")
+        if self.semantic_search_default_top_k < 1:
+            raise ValueError("SEMANTIC_SEARCH_DEFAULT_TOP_K must be positive")
+        if self.semantic_search_max_top_k < self.semantic_search_default_top_k:
+            raise ValueError("SEMANTIC_SEARCH_MAX_TOP_K must be at least the default")
         return self
 
 
