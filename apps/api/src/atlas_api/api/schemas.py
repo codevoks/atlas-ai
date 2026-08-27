@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from atlas_api.application.ports import (
+    ChunkRecord,
     DocumentRecord,
     DocumentVersionRecord,
     IngestionJobRecord,
@@ -222,6 +223,16 @@ class DocumentVersionResponse(BaseModel):
     status: DocumentVersionStatus
     active: bool
     created_at: str
+    parser_name: str | None = None
+    parser_version: str | None = None
+    chunker_name: str | None = None
+    chunker_version: str | None = None
+    normalized_object_key: str | None = None
+    normalized_digest_sha256: str | None = None
+    chunk_count: int = 0
+    character_count: int = 0
+    token_count: int = 0
+    safe_metadata: dict[str, object] = Field(default_factory=dict)
 
     @classmethod
     def from_record(cls, record: DocumentVersionRecord) -> DocumentVersionResponse:
@@ -237,11 +248,61 @@ class DocumentVersionResponse(BaseModel):
             status=record.status,
             active=record.active,
             created_at=record.created_at.isoformat(),
+            parser_name=record.parser_name,
+            parser_version=record.parser_version,
+            chunker_name=record.chunker_name,
+            chunker_version=record.chunker_version,
+            normalized_object_key=record.normalized_object_key,
+            normalized_digest_sha256=record.normalized_digest_sha256,
+            chunk_count=record.chunk_count,
+            character_count=record.character_count,
+            token_count=record.token_count,
+            safe_metadata=record.safe_metadata or {},
         )
 
 
 class DocumentVersionListResponse(BaseModel):
     items: list[DocumentVersionResponse]
+
+
+class ChunkResponse(BaseModel):
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    document_version_id: uuid.UUID
+    ordinal: int
+    block_type: str
+    heading: str | None
+    page_number: int | None
+    start_char: int
+    end_char: int
+    token_count: int
+    content_hash: str
+    text: str
+    safe_metadata: dict[str, object]
+    created_at: str
+
+    @classmethod
+    def from_record(cls, record: ChunkRecord) -> ChunkResponse:
+        return cls(
+            id=record.id,
+            workspace_id=record.workspace_id,
+            document_version_id=record.document_version_id,
+            ordinal=record.ordinal,
+            block_type=record.block_type,
+            heading=record.heading,
+            page_number=record.page_number,
+            start_char=record.start_char,
+            end_char=record.end_char,
+            token_count=record.token_count,
+            content_hash=record.content_hash,
+            text=record.text,
+            safe_metadata=record.safe_metadata,
+            created_at=record.created_at.isoformat(),
+        )
+
+
+class ChunkListResponse(BaseModel):
+    items: list[ChunkResponse]
 
 
 class IngestionJobResponse(BaseModel):

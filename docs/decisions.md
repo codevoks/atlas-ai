@@ -19,7 +19,7 @@ This is the decision ledger. “Fixed” means later phases must not casually re
 | D13 | Persist model/provider/version, prompt/config, parser/chunker, index, and evaluation provenance | Fixed | Reproducibility, regression diagnosis, and safe migrations require lineage. |
 | D14 | OpenAPI is the API contract; TypeScript clients/types are generated or contract-tested | Fixed | Avoids Python/TypeScript drift. Domain models are not shared directly across languages. |
 | D15 | Deterministic workflow before agent; LangGraph only for bounded research with durable checkpoints and budgets | Fixed | Most product flows need reliability, not autonomy. Agent behavior must be measurable and interruptible. |
-| D16 | No multi-agent runtime unless a named benchmark shows material benefit over a single bounded workflow | Fixed evidence gate | Coordination, context duplication, failure propagation, cost, and evaluation complexity are real. Learn patterns through design exercises first. |
+| D16 | No multi-agent runtime unless a named benchmark shows material benefit over a single bounded workflow | Fixed evidence gate | Coordination, context duplication, failure propagation, cost, and evaluation complexity are real. Alternative topologies may be modeled separately, but production runtime complexity requires benchmark evidence. |
 | D17 | OpenTelemetry is the base instrumentation with local/no-export defaults; an AI observability sink such as Langfuse is optional behind an adapter | Fixed late-phase integration, schemas early | Avoids vendor lock-in and paid SaaS requirements while preserving AI-specific lineage. Raw sensitive content collection is off by default. |
 | D18 | REST/JSON first; cursor pagination; stable error envelope; idempotency keys on replayable commands | Fixed initially | Simple, debuggable contracts. GraphQL/event streaming require a concrete UX or integration need. |
 | D19 | Security controls are phase-local and cumulative; retrieved/model/tool content is untrusted | Fixed | A final security pass cannot repair missing tenant/data-flow invariants. |
@@ -31,6 +31,7 @@ This is the decision ledger. “Fixed” means later phases must not casually re
 | D25 | Phase 2 local development uses an API-hosted filesystem object-store adapter with HMAC-signed upload URLs | Fixed implementation; production adapter deferred | This preserves the object-storage boundary, tenant-prefixed unpredictable keys, digest checks, and short-lived upload semantics without requiring cloud credentials for local tests. S3-compatible storage, bucket policy, server-side encryption, and lifecycle rules are deferred to the deployment phase behind the same adapter interface. |
 | D26 | Phase 2 ingestion uses PostgreSQL `FOR UPDATE SKIP LOCKED` leasing and expected-version publication | Fixed initial implementation | A database-backed durable queue avoids dual-write risk and keeps status authoritative. A dedicated broker can be introduced later only after queue-depth, oldest-age, throughput, isolation, or scheduling evidence justifies the operational cost. |
 | D27 | Every phase must retain a zero-cost build/test/demo path; billable cloud/SaaS/domain/model integrations are explicit opt-in only | Fixed | The default engineering workflow must be reproducible without monetary spend. Production-grade abstractions remain valuable, but tests and demonstrations use local open-source infrastructure and deterministic fakes unless the user explicitly approves billable execution. |
+| D28 | Phase 3 supports deterministic text/Markdown parsing first, with richer converters deferred behind the parser boundary | Fixed initial implementation; format expansion evidence gate | A narrow allowlist keeps the default ingestion path safe, zero-cost, debuggable, and testable while preserving the parser/chunker provenance model. PDF, office, OCR, archive, and semantic/contextual chunking support require sandboxing, fixture coverage, and quality/resource evidence before adoption. |
 
 ## Important interfaces
 
@@ -69,7 +70,7 @@ Every interface carries workspace/resource scope, trace context, timeout/cancell
 - Queue transport and workflow engine for ingestion: measure durable DB-job limits and operational needs.
 - Exact embedding/generation/reranking provider and model: default tests/demos use deterministic local fakes; any paid or hosted provider is opt-in and compared by quality/latency/cost only after approval.
 - Vector index type and parameters: require corpus size and recall/latency curves.
-- Chunk size/overlap/structure-aware method: tune on evaluation cases, not folklore.
+- Chunk size/overlap/structure-aware method: Phase 3 ships deterministic text-first defaults; tune future values on evaluation cases, not folklore.
 - Weighted fusion, query expansion, contextual retrieval, and reranking depth: enable only with ablations.
 - Synchronous versus asynchronous answer API: measure model latency and UX timeout requirements.
 - PostgreSQL RLS: add after application policy is testable; benchmark operational implications.

@@ -3,14 +3,17 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from types import TracebackType
 
-from sqlalchemy import Select, and_, func, or_, select, text, update
+from sqlalchemy import Select, and_, delete, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from atlas_api.application.ports import (
+    ChunkDraftRecord,
+    ChunkRecord,
     DocumentRecord,
     DocumentStore,
     DocumentVersionRecord,
@@ -39,6 +42,7 @@ from atlas_api.domain.models import (
 )
 from atlas_api.infrastructure.models import (
     AuditEventModel,
+    ChunkModel,
     DocumentModel,
     DocumentVersionModel,
     IdempotencyRecordModel,
@@ -601,7 +605,11 @@ class SqlAlchemyDocumentStore:
             byte_size=intent.byte_size,
             status=DocumentVersionStatus.INGESTION_PENDING.value,
             active=False,
-            parser_config={"phase": 2, "parsing": "deferred"},
+            parser_config={
+                "phase": 3,
+                "operation": "parse_normalize_chunk",
+                "supported_media_types": ["text/plain", "text/markdown", "application/markdown"],
+            },
             created_by_user_id=actor.user_id,
         )
         self._session.add(document_version)
@@ -617,7 +625,7 @@ class SqlAlchemyDocumentStore:
             progress=0,
             cancellation_requested=False,
             idempotency_key=f"ingest:{document_version.id}",
-            config={"phase": 2, "operation": "verify_and_publish_metadata"},
+            config={"phase": 3, "operation": "verify_parse_normalize_chunk_publish"},
         )
         self._session.add(job)
         intent.status = UploadIntentStatus.FINALIZED.value
@@ -703,6 +711,38 @@ class SqlAlchemyDocumentStore:
         ).all()
         return [self._version_record(row) for row in versions]
 
+    async def list_chunks(
+        self,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        document_id: uuid.UUID,
+        version_id: uuid.UUID,
+    ) -> list[ChunkRecord]:
+        exists = await self._session.scalar(
+            select(DocumentVersionModel.id)
+            .join(DocumentModel, DocumentModel.id == DocumentVersionModel.document_id)
+            .where(
+                DocumentModel.id == document_id,
+                DocumentModel.workspace_id == workspace_id,
+                DocumentModel.status == DocumentStatus.ACTIVE.value,
+                DocumentVersionModel.id == version_id,
+                DocumentVersionModel.workspace_id == workspace_id,
+            )
+        )
+        if exists is None:
+            raise ResourceNotFoundError()
+        chunks = (
+            await self._session.scalars(
+                select(ChunkModel)
+                .where(
+                    ChunkModel.workspace_id == workspace_id,
+                    ChunkModel.document_version_id == version_id,
+                )
+                .order_by(ChunkModel.ordinal.asc())
+            )
+        ).all()
+        return [self._chunk_record(chunk) for chunk in chunks]
+
     async def delete_document(
         self, actor: Actor, workspace_id: uuid.UUID, document_id: uuid.UUID, request_id: str
     ) -> None:
@@ -729,6 +769,9 @@ class SqlAlchemyDocumentStore:
             IngestionJobState.PENDING.value,
             IngestionJobState.CLAIMED.value,
             IngestionJobState.VERIFYING.value,
+            IngestionJobState.PARSING.value,
+            IngestionJobState.NORMALIZING.value,
+            IngestionJobState.CHUNKING.value,
             IngestionJobState.PUBLISHING.value,
             IngestionJobState.RETRY_WAIT.value,
         ]
@@ -939,6 +982,35 @@ class SqlAlchemyDocumentStore:
             status=DocumentVersionStatus(version.status),
             active=version.active,
             created_at=version.created_at,
+            parser_name=version.parser_name,
+            parser_version=version.parser_version,
+            chunker_name=version.chunker_name,
+            chunker_version=version.chunker_version,
+            normalized_object_key=version.normalized_object_key,
+            normalized_digest_sha256=version.normalized_digest_sha256,
+            chunk_count=version.chunk_count,
+            character_count=version.character_count,
+            token_count=version.token_count,
+            safe_metadata=version.safe_metadata,
+        )
+
+    @staticmethod
+    def _chunk_record(chunk: ChunkModel) -> ChunkRecord:
+        return ChunkRecord(
+            id=chunk.id,
+            workspace_id=chunk.workspace_id,
+            document_version_id=chunk.document_version_id,
+            ordinal=chunk.ordinal,
+            block_type=chunk.block_type,
+            heading=chunk.heading,
+            page_number=chunk.page_number,
+            start_char=chunk.start_char,
+            end_char=chunk.end_char,
+            token_count=chunk.token_count,
+            content_hash=chunk.content_hash,
+            text=chunk.text,
+            safe_metadata=chunk.safe_metadata,
+            created_at=chunk.created_at,
         )
 
     @staticmethod
@@ -1028,6 +1100,9 @@ class SqlAlchemyIngestionJobStore:
                             [
                                 IngestionJobState.CLAIMED.value,
                                 IngestionJobState.VERIFYING.value,
+                                IngestionJobState.PARSING.value,
+                                IngestionJobState.NORMALIZING.value,
+                                IngestionJobState.CHUNKING.value,
                                 IngestionJobState.PUBLISHING.value,
                             ]
                         ),
@@ -1100,11 +1175,44 @@ class SqlAlchemyIngestionJobStore:
             job.lease_owner = None
             job.lease_expires_at = None
             job.next_attempt_at = now + timedelta(seconds=retry_after_seconds or 30)
+        version_status_by_state = {
+            IngestionJobState.VERIFYING: DocumentVersionStatus.VERIFYING,
+            IngestionJobState.PARSING: DocumentVersionStatus.PARSING,
+            IngestionJobState.NORMALIZING: DocumentVersionStatus.NORMALIZING,
+            IngestionJobState.CHUNKING: DocumentVersionStatus.CHUNKING,
+            IngestionJobState.CANCELLED: DocumentVersionStatus.CANCELLED,
+            IngestionJobState.FAILED: DocumentVersionStatus.FAILED,
+        }
+        next_version_status = version_status_by_state.get(to_state)
+        if next_version_status is not None:
+            version = await self._session.scalar(
+                select(DocumentVersionModel)
+                .where(DocumentVersionModel.id == job.document_version_id)
+                .with_for_update()
+            )
+            if version is not None:
+                version.status = next_version_status.value
+                version.error_code = error_code
+                version.error_message = error_message
         await self._job_event(job.workspace_id, job.id, prior, to_state, reason, {})
         return SqlAlchemyDocumentStore._job_record(job)
 
     async def publish_document_version(
-        self, job_id: uuid.UUID, worker_id: str, expected_job_version: int
+        self,
+        job_id: uuid.UUID,
+        worker_id: str,
+        expected_job_version: int,
+        *,
+        chunks: Sequence[ChunkDraftRecord] = (),
+        parser_name: str | None = None,
+        parser_version: str | None = None,
+        chunker_name: str | None = None,
+        chunker_version: str | None = None,
+        normalized_object_key: str | None = None,
+        normalized_digest_sha256: str | None = None,
+        character_count: int = 0,
+        token_count: int = 0,
+        safe_metadata: dict[str, object] | None = None,
     ) -> IngestionJobRecord:
         now = datetime.now(UTC)
         job = await self._session.scalar(
@@ -1123,6 +1231,37 @@ class SqlAlchemyIngestionJobStore:
         )
         if version is None:
             raise ResourceNotFoundError()
+        if chunks:
+            await self._session.execute(
+                delete(ChunkModel).where(ChunkModel.document_version_id == version.id)
+            )
+            for chunk in chunks:
+                self._session.add(
+                    ChunkModel(
+                        workspace_id=version.workspace_id,
+                        document_version_id=version.id,
+                        ordinal=chunk.ordinal,
+                        block_type=chunk.block_type,
+                        heading=chunk.heading,
+                        page_number=chunk.page_number,
+                        start_char=chunk.start_char,
+                        end_char=chunk.end_char,
+                        token_count=chunk.token_count,
+                        content_hash=chunk.content_hash,
+                        text=chunk.text,
+                        safe_metadata=chunk.safe_metadata,
+                    )
+                )
+            version.parser_name = parser_name
+            version.parser_version = parser_version
+            version.chunker_name = chunker_name
+            version.chunker_version = chunker_version
+            version.normalized_object_key = normalized_object_key
+            version.normalized_digest_sha256 = normalized_digest_sha256
+            version.chunk_count = len(chunks)
+            version.character_count = character_count
+            version.token_count = token_count
+            version.safe_metadata = safe_metadata or {}
         await self._session.execute(
             update(DocumentVersionModel)
             .where(DocumentVersionModel.document_id == version.document_id)

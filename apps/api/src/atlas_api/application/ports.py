@@ -87,6 +87,48 @@ class DocumentVersionRecord:
     status: DocumentVersionStatus
     active: bool
     created_at: datetime
+    parser_name: str | None = None
+    parser_version: str | None = None
+    chunker_name: str | None = None
+    chunker_version: str | None = None
+    normalized_object_key: str | None = None
+    normalized_digest_sha256: str | None = None
+    chunk_count: int = 0
+    character_count: int = 0
+    token_count: int = 0
+    safe_metadata: dict[str, object] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ChunkRecord:
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    document_version_id: uuid.UUID
+    ordinal: int
+    block_type: str
+    heading: str | None
+    page_number: int | None
+    start_char: int
+    end_char: int
+    token_count: int
+    content_hash: str
+    text: str
+    safe_metadata: dict[str, object]
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ChunkDraftRecord:
+    ordinal: int
+    block_type: str
+    heading: str | None
+    page_number: int | None
+    start_char: int
+    end_char: int
+    token_count: int
+    content_hash: str
+    text: str
+    safe_metadata: dict[str, object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,6 +246,14 @@ class DocumentStore(Protocol):
     async def list_versions(
         self, actor: Actor, workspace_id: uuid.UUID, document_id: uuid.UUID
     ) -> list[DocumentVersionRecord]: ...
+
+    async def list_chunks(
+        self,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        document_id: uuid.UUID,
+        version_id: uuid.UUID,
+    ) -> list[ChunkRecord]: ...
 
     async def delete_document(
         self, actor: Actor, workspace_id: uuid.UUID, document_id: uuid.UUID, request_id: str

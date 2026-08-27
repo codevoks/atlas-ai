@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     upload_signing_secret: str | None = Field(default=None, repr=False)
     upload_intent_ttl_seconds: int = 900
     max_upload_bytes: int = 10 * 1024 * 1024
+    parser_max_bytes: int = 1 * 1024 * 1024
+    chunk_target_chars: int = 900
+    chunk_overlap_chars: int = 120
+    max_chunks_per_document: int = 500
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -46,6 +50,14 @@ class Settings(BaseSettings):
             raise ValueError("UPLOAD_INTENT_TTL_SECONDS must be at least 60")
         if self.max_upload_bytes < 1:
             raise ValueError("MAX_UPLOAD_BYTES must be positive")
+        if self.parser_max_bytes < 1:
+            raise ValueError("PARSER_MAX_BYTES must be positive")
+        if self.chunk_target_chars < 200:
+            raise ValueError("CHUNK_TARGET_CHARS must be at least 200")
+        if self.chunk_overlap_chars < 0 or self.chunk_overlap_chars >= self.chunk_target_chars:
+            raise ValueError("CHUNK_OVERLAP_CHARS must be non-negative and smaller than target")
+        if self.max_chunks_per_document < 1:
+            raise ValueError("MAX_CHUNKS_PER_DOCUMENT must be positive")
         return self
 
 

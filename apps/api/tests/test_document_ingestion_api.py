@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 from httpx import AsyncClient
 
+from atlas_api.application.ports import ChunkDraftRecord
 from atlas_api.domain.models import IngestionJobState
 from atlas_api.infrastructure.database import create_engine, create_session_factory
 from atlas_api.infrastructure.repositories import SqlAlchemyIngestionJobStore
@@ -276,3 +277,113 @@ async def test_document_delete_hides_document_and_requests_job_cancellation(
     )
     assert job.status_code == 200
     assert job.json()["state"] == "cancel_requested"
+
+
+@pytest.mark.asyncio
+async def test_published_chunks_are_listed_with_version_provenance_and_tenant_scope(
+    client: AsyncClient,
+    alice_headers: dict[str, str],
+    bob_headers: dict[str, str],
+) -> None:
+    workspace = await create_workspace(client, alice_headers, key="phase3-chunks")
+    workspace_id = str(workspace["id"])
+    source = await create_source(client, alice_headers, workspace_id)
+    intent = await create_uploaded_intent(
+        client,
+        alice_headers,
+        workspace_id,
+        b"# Policy\n\nAtlas keeps tenant data isolated.",
+        filename="policy.md",
+        media_type="text/markdown",
+    )
+    finalize = await client.post(
+        f"/v1/workspaces/{workspace_id}/uploads/{intent['id']}/finalize",
+        headers={**alice_headers, "Idempotency-Key": "finalize-phase3-chunks"},
+        json={"source_id": source["id"], "title": "Policy"},
+    )
+    assert finalize.status_code == 201, finalize.text
+    version_id = finalize.json()["document_version"]["id"]
+    document_id = finalize.json()["document"]["id"]
+    job_id = finalize.json()["ingestion_job"]["id"]
+
+    engine = create_engine(make_settings())
+    session_factory = create_session_factory(engine)
+    try:
+        async with session_factory() as session, session.begin():
+            store = SqlAlchemyIngestionJobStore(session)
+            claimed = await store.claim_next_job("worker-a", lease_seconds=60)
+            assert claimed is not None
+            verifying = await store.transition_job(
+                claimed.id,
+                "worker-a",
+                claimed.version,
+                IngestionJobState.VERIFYING,
+                progress=35,
+                reason="test_verify",
+            )
+            chunking = await store.transition_job(
+                claimed.id,
+                "worker-a",
+                verifying.version,
+                IngestionJobState.CHUNKING,
+                progress=70,
+                reason="test_chunking",
+            )
+            completed = await store.publish_document_version(
+                claimed.id,
+                "worker-a",
+                chunking.version,
+                chunks=[
+                    ChunkDraftRecord(
+                        ordinal=0,
+                        block_type="section",
+                        heading="Policy",
+                        page_number=None,
+                        start_char=0,
+                        end_char=42,
+                        token_count=6,
+                        content_hash=hashlib.sha256(
+                            b"Atlas keeps tenant data isolated."
+                        ).hexdigest(),
+                        text="Atlas keeps tenant data isolated.",
+                        safe_metadata={"source_blocks": 2},
+                    )
+                ],
+                parser_name="atlas-text-parser",
+                parser_version="test",
+                chunker_name="atlas-paragraph-chunker",
+                chunker_version="test",
+                normalized_object_key=f"workspaces/{workspace_id}/derived/{version_id}/normalized.json",
+                normalized_digest_sha256=hashlib.sha256(b"normalized").hexdigest(),
+                character_count=42,
+                token_count=6,
+                safe_metadata={"media_type": "text/markdown"},
+            )
+            assert str(completed.id) == job_id
+            assert completed.state == IngestionJobState.SUCCEEDED
+    finally:
+        await engine.dispose()
+
+    versions = await client.get(
+        f"/v1/workspaces/{workspace_id}/documents/{document_id}/versions",
+        headers=alice_headers,
+    )
+    assert versions.status_code == 200, versions.text
+    version = versions.json()["items"][0]
+    assert version["parser_name"] == "atlas-text-parser"
+    assert version["chunk_count"] == 1
+    assert version["token_count"] == 6
+
+    chunks = await client.get(
+        f"/v1/workspaces/{workspace_id}/documents/{document_id}/versions/{version_id}/chunks",
+        headers=alice_headers,
+    )
+    assert chunks.status_code == 200, chunks.text
+    assert chunks.json()["items"][0]["text"] == "Atlas keeps tenant data isolated."
+    assert chunks.json()["items"][0]["heading"] == "Policy"
+
+    cross_tenant = await client.get(
+        f"/v1/workspaces/{workspace_id}/documents/{document_id}/versions/{version_id}/chunks",
+        headers=bob_headers,
+    )
+    assert cross_tenant.status_code == 404

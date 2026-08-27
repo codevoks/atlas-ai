@@ -62,13 +62,13 @@ Trust boundaries exist at the browser, service ingress, tenant authorization lay
 
 Logical code boundaries inside API/worker are `domain`, `application`, `infrastructure`, `retrieval`, `ai`, `api`, and worker entrypoints. Imports point inward: domain has no framework/provider dependencies; application depends on ports; infrastructure implements ports; routes and job consumers adapt external input.
 
-## Current implemented baseline after Phase 2
+## Current implemented baseline after Phase 3
 
-The repository currently implements the control-plane foundation plus the storage and ingestion metadata slice: `apps/web`, `apps/api`, `apps/worker`, `packages/config`, and `packages/shared-types`. The API owns identity resolution, workspace use cases, RBAC policy, SQLAlchemy persistence, Alembic migrations, audit events, source/document/upload contracts, signed local upload handling, and OpenAPI export. The web app owns local sign-in UX, server-side BFF calls, workspace/member/source/document screens, direct-upload orchestration, Tailwind CSS styling, and security headers. The worker owns deterministic ingestion-job claiming, lease/version checks, object integrity verification, and metadata-only publication.
+The repository currently implements the control-plane foundation plus the storage, ingestion, parsing, normalization, and chunking slice: `apps/web`, `apps/api`, `apps/worker`, `packages/config`, and `packages/shared-types`. The API owns identity resolution, workspace use cases, RBAC policy, SQLAlchemy persistence, Alembic migrations, audit events, source/document/upload/chunk contracts, signed local upload handling, and OpenAPI export. The web app owns local sign-in UX, server-side BFF calls, workspace/member/source/document screens, direct-upload orchestration, chunk preview display, Tailwind CSS styling, and security headers. The worker owns deterministic ingestion-job claiming, lease/version checks, object integrity verification, text/Markdown parsing, canonical normalization, deterministic chunking, derived artifact writes, and atomic chunk publication.
 
-The implemented persistent tables are `users`, `workspaces`, `memberships`, `audit_events`, `idempotency_records`, `sources`, `upload_intents`, `documents`, `document_versions`, `ingestion_jobs`, and `job_events`. Local development uses a filesystem-backed object-store adapter with tenant-prefixed keys and HMAC-signed upload URLs; production object storage remains behind the same adapter boundary.
+The implemented persistent tables are `users`, `workspaces`, `memberships`, `audit_events`, `idempotency_records`, `sources`, `upload_intents`, `documents`, `document_versions`, `ingestion_jobs`, `job_events`, and `chunks`. Local development uses a filesystem-backed object-store adapter with tenant-prefixed keys, HMAC-signed upload URLs, immutable uploaded objects, and normalized derived artifacts; production object storage remains behind the same adapter boundary.
 
-Phase 2 intentionally publishes document metadata only. Parsing, malware scanning, chunking, embeddings, retrieval, generation, evaluations, Redis-backed coordination, and external object-storage credentials remain deferred to later phases. The Phase 2 build/test/demo path is zero-cost: local PostgreSQL, local filesystem object storage, deterministic development authentication, and no model-provider or cloud API calls.
+Phase 3 intentionally supports a small text-first parser surface: `text/plain`, Markdown-like media types, and `.txt`/`.md`/`.markdown` filenames. Unsupported, binary, PDF, archive, and invalid-UTF-8 files fail safely without publishing chunks. Malware scanning, PDF/office/OCR extraction, embeddings, retrieval, generation, evaluations, Redis-backed coordination, and external object-storage credentials remain deferred to later phases. The Phase 3 build/test/demo path is zero-cost: local PostgreSQL, local filesystem object storage, deterministic development authentication, deterministic parser/chunker logic, and no model-provider or cloud API calls.
 
 ## Canonical data model
 
@@ -79,7 +79,7 @@ All tenant-owned tables include `workspace_id`, even when derivable, to make fil
 - `memberships`: `(workspace_id, user_id)`, role, status; unique membership.
 - `sources`: logical origin and source type; no secret values in ordinary columns.
 - `documents`: stable logical document within a source/workspace.
-- `document_versions`: immutable content version, object key, digest, media type, size, ingest status, parser provenance, active/publication state.
+- `document_versions`: immutable content version, object key, digest, media type, size, ingest status, parser/chunker provenance, normalized artifact pointer/digest, aggregate counts, active/publication state.
 - `ingestion_jobs`: durable state machine, attempt count, idempotency key, lease/heartbeat, error class, progress, requested configuration.
 - `chunks`: immutable chunk identity tied to document version; ordinal/page/span, text or protected text reference, token count, metadata, content hash, chunker version.
 - `embedding_sets`: model/provider/dimension/configuration and lifecycle for migrations.
@@ -100,9 +100,9 @@ Database invariants include composite tenant-aware foreign keys where practical,
 
 1. API authorizes `document:create`, validates declared file constraints, and creates an upload intent with a tenant-scoped object key.
 2. Client uploads via short-lived signed URL. API finalizes by verifying object metadata/digest and creates the document version plus durable job in one transaction.
-3. In Phase 2, finalization creates the document, immutable document version, ingestion job, job event, audit event, and idempotency record in one PostgreSQL transaction.
+3. Finalization creates the document, immutable document version, ingestion job, job event, audit event, and idempotency record in one PostgreSQL transaction.
 4. The worker claims jobs with `FOR UPDATE SKIP LOCKED`, a lease owner, heartbeat timestamp, attempt counters, expected version, and bounded retry states.
-5. Phase 2 worker execution verifies stored object size/digest and atomically publishes the document version as metadata-only. Later phases expand the state machine with malware/type policy, parsing, normalization, chunking, and embedding stages.
+5. Phase 3 worker execution verifies stored object size/digest, rejects unsupported or unsafe file classes, parses supported text/Markdown input, normalizes text, writes a normalized derived artifact, creates deterministic chunks, and atomically publishes the document version as ready with chunk/provenance metadata.
 6. Cancellation is cooperative. Dead-letter state preserves diagnosable error metadata and a safe replay path.
 
 ### Search
@@ -119,7 +119,7 @@ Search produces immutable evidence. Context construction deduplicates, applies p
 
 ### Bounded research
 
-A LangGraph workflow is used only after deterministic RAG is measured. Run state and checkpoints are durable. Each tool has a schema, allowlist, authorization scope, timeout, cost, and output sanitizer. The loop has maximum steps/tokens/cost/wall time, explicit terminal states, and approval nodes for sensitive actions. Atlas begins with one orchestrated agent/workflow; multi-agent patterns remain a design exercise unless benchmarks justify them.
+A LangGraph workflow is used only after deterministic RAG is measured. Run state and checkpoints are durable. Each tool has a schema, allowlist, authorization scope, timeout, cost, and output sanitizer. The loop has maximum steps/tokens/cost/wall time, explicit terminal states, and approval nodes for sensitive actions. Atlas begins with one orchestrated agent/workflow; multi-agent runtime patterns remain deferred unless benchmarks justify their coordination and evaluation cost.
 
 ## API boundaries
 

@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from atlas_api.application.ports import (
+    ChunkRecord,
     DocumentRecord,
     DocumentVersionRecord,
     IngestionJobRecord,
@@ -345,6 +346,20 @@ class DocumentService:
                 raise ResourceNotFoundError()
             require_permission(membership, Permission.DOCUMENT_READ)
             return await tx.documents.list_versions(actor, workspace_id, document_id)
+
+    async def list_chunks(
+        self,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        document_id: uuid.UUID,
+        version_id: uuid.UUID,
+    ) -> list[ChunkRecord]:
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.DOCUMENT_READ)
+            return await tx.documents.list_chunks(actor, workspace_id, document_id, version_id)
 
     async def delete_document(
         self, actor: Actor, workspace_id: uuid.UUID, document_id: uuid.UUID, request_id: str

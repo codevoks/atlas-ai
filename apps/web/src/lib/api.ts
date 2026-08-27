@@ -11,6 +11,8 @@ export type Workspace = components["schemas"]["WorkspaceResponse"];
 export type Member = components["schemas"]["MemberResponse"];
 export type Source = components["schemas"]["SourceResponse"];
 export type Document = components["schemas"]["DocumentResponse"];
+export type DocumentVersion = components["schemas"]["DocumentVersionResponse"];
+export type Chunk = components["schemas"]["ChunkResponse"];
 export type IngestionJob = components["schemas"]["IngestionJobResponse"];
 export type UploadIntent = components["schemas"]["UploadIntentResponse"];
 export type UploadFinalizeResult = components["schemas"]["UploadFinalizeResponse"];
@@ -80,6 +82,27 @@ export async function getSources(workspaceId: string): Promise<Source[]> {
 export async function getDocuments(workspaceId: string): Promise<Document[]> {
   const payload = await apiRequest<{ items: Document[] }>(
     `/v1/workspaces/${workspaceId}/documents`,
+  );
+  return payload.items;
+}
+
+export async function getDocumentVersions(
+  workspaceId: string,
+  documentId: string,
+): Promise<DocumentVersion[]> {
+  const payload = await apiRequest<{ items: DocumentVersion[] }>(
+    `/v1/workspaces/${workspaceId}/documents/${documentId}/versions`,
+  );
+  return payload.items;
+}
+
+export async function getDocumentChunks(
+  workspaceId: string,
+  documentId: string,
+  versionId: string,
+): Promise<Chunk[]> {
+  const payload = await apiRequest<{ items: Chunk[] }>(
+    `/v1/workspaces/${workspaceId}/documents/${documentId}/versions/${versionId}/chunks`,
   );
   return payload.items;
 }

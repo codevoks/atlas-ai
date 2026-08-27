@@ -16,6 +16,8 @@ import {
 import { SubmitButton } from "@/components/submit-button";
 import {
   AtlasApiError,
+  getDocumentChunks,
+  getDocumentVersions,
   getDocuments,
   getIngestionJob,
   getMe,
@@ -58,6 +60,27 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
     .filter((jobId): jobId is string => Boolean(jobId));
   const jobs = await Promise.all(jobIds.map((jobId) => getIngestionJob(workspaceId, jobId)));
   const jobsById = new Map(jobs.map((job) => [job.id, job]));
+  const versionPairs = await Promise.all(
+    documents.map(async (document) => ({
+      documentId: document.id,
+      versions: await getDocumentVersions(workspaceId, document.id),
+    })),
+  );
+  const latestVersionByDocument = new Map(
+    versionPairs.map((pair) => [pair.documentId, pair.versions[0]]),
+  );
+  const previewPairs = await Promise.all(
+    versionPairs
+      .map((pair) => ({ documentId: pair.documentId, version: pair.versions[0] }))
+      .filter((pair) => pair.version?.chunk_count > 0)
+      .map(async (pair) => ({
+        documentId: pair.documentId,
+        chunks: await getDocumentChunks(workspaceId, pair.documentId, pair.version.id),
+      })),
+  );
+  const firstChunkByDocument = new Map(
+    previewPairs.map((pair) => [pair.documentId, pair.chunks[0]]),
+  );
 
   return (
     <main className="app-shell">
@@ -95,6 +118,8 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
               <div className="member-list">
                 {documents.map((document) => {
                   const job = document.latest_job_id ? jobsById.get(document.latest_job_id) : undefined;
+                  const latestVersion = latestVersionByDocument.get(document.id);
+                  const firstChunk = firstChunkByDocument.get(document.id);
                   return (
                     <article className="member-row" key={document.id}>
                       <span className="avatar">D</span>
@@ -103,6 +128,17 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
                         <small>
                           version {document.version} · {document.latest_version_status ?? "pending"}
                         </small>
+                        {latestVersion ? (
+                          <small>
+                            {latestVersion.chunk_count} chunks · {latestVersion.token_count} tokens ·{" "}
+                            {latestVersion.parser_name ?? "parser pending"}
+                          </small>
+                        ) : null}
+                        {firstChunk ? (
+                          <small className="chunk-preview">
+                            “{firstChunk.text.slice(0, 180)}{firstChunk.text.length > 180 ? "…" : ""}”
+                          </small>
+                        ) : null}
                         <small className="mono">{document.id}</small>
                       </span>
                       {job ? (
@@ -139,7 +175,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
             <aside className="side-panel">
               <p className="eyebrow">Direct upload</p><h2>Add a document</h2>
               <p className="muted">
-                Phase 2 verifies and publishes metadata. Parsing and retrieval are introduced later.
+                Phase 3 parses UTF-8 text/Markdown and publishes deterministic chunks. Retrieval is introduced later.
               </p>
               {sources.length === 0 ? (
                 <p className="alert">Create a source before uploading documents.</p>
@@ -159,7 +195,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
                   id="document-file"
                   name="file"
                   type="file"
-                  accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf"
+                  accept=".txt,.md,.markdown,text/plain,text/markdown,application/markdown"
                   required
                 />
                 <SubmitButton disabled={sources.length === 0}>Upload and finalize</SubmitButton>

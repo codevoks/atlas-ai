@@ -12,6 +12,8 @@ from atlas_api.api.dependencies import (
     WorkspaceServiceDependency,
 )
 from atlas_api.api.schemas import (
+    ChunkListResponse,
+    ChunkResponse,
     DocumentListResponse,
     DocumentResponse,
     DocumentVersionListResponse,
@@ -355,6 +357,22 @@ async def list_document_versions(
     return DocumentVersionListResponse(
         items=[DocumentVersionResponse.from_record(item) for item in records]
     )
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/documents/{document_id}/versions/{version_id}/chunks",
+    response_model=ChunkListResponse,
+    tags=["documents"],
+)
+async def list_document_version_chunks(
+    workspace_id: uuid.UUID,
+    document_id: uuid.UUID,
+    version_id: uuid.UUID,
+    actor: ActorDependency,
+    service: DocumentServiceDependency,
+) -> ChunkListResponse:
+    records = await service.list_chunks(actor, workspace_id, document_id, version_id)
+    return ChunkListResponse(items=[ChunkResponse.from_record(item) for item in records])
 
 
 @router.delete(

@@ -12,6 +12,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     text,
 )
@@ -196,7 +197,8 @@ class DocumentVersionModel(TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint(
             "status IN ("
-            "'upload_pending','ingestion_pending','verifying','ready','failed','cancelled'"
+            "'upload_pending','ingestion_pending','verifying','parsing','normalizing',"
+            "'chunking','ready','failed','cancelled'"
             ")",
             name="valid_document_version_status",
         ),
@@ -228,6 +230,16 @@ class DocumentVersionModel(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="ingestion_pending")
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     parser_config: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    parser_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    parser_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    chunker_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    chunker_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    normalized_object_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    normalized_digest_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    character_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    safe_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     created_by_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
@@ -240,7 +252,7 @@ class IngestionJobModel(TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint(
             "state IN ('pending','claimed','verifying','publishing','succeeded','retry_wait',"
-            "'cancel_requested','cancelled','failed')",
+            "'parsing','normalizing','chunking','cancel_requested','cancelled','failed')",
             name="valid_ingestion_job_state",
         ),
         UniqueConstraint("workspace_id", "document_version_id", name="uq_ingestion_jobs_version"),
@@ -296,3 +308,35 @@ class JobEventModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class ChunkModel(TimestampMixin, Base):
+    __tablename__ = "chunks"
+    __table_args__ = (
+        CheckConstraint("ordinal >= 0", name="valid_chunk_ordinal"),
+        CheckConstraint("start_char >= 0", name="valid_chunk_start"),
+        CheckConstraint("end_char >= start_char", name="valid_chunk_span"),
+        CheckConstraint("token_count >= 0", name="valid_chunk_token_count"),
+        CheckConstraint("content_hash ~ '^[0-9a-f]{64}$'", name="valid_chunk_hash"),
+        UniqueConstraint("document_version_id", "ordinal", name="uq_chunks_version_ordinal"),
+        Index("ix_chunks_workspace_version", "workspace_id", "document_version_id"),
+        Index("ix_chunks_version_hash", "document_version_id", "content_hash"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    document_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("document_versions.id", ondelete="CASCADE"), nullable=False
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    block_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    heading: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    start_char: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_char: Mapped[int] = mapped_column(Integer, nullable=False)
+    token_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    safe_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)

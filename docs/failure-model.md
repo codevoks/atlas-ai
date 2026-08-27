@@ -13,7 +13,7 @@ All boundaries normalize failures into: invalid input; unauthenticated; unauthor
 | DB job created, notification fails | Durable job remains claimable; status shows pending | DB polling/claiming is authoritative in Phase 2; notification is not authority |
 | Duplicate job/delivery | One stage/version effect; no duplicate publication/spend beyond bounded unavoidable provider retry | Unique effect keys, expected transitions, stage checkpoints; Phase 2 uses unique job keys and versioned leases |
 | Worker crash/stall | Lease expires; another worker resumes from safe checkpoint | Heartbeat/lease monitor, stale-owner rejection; Phase 2 rejects stale publication by expected job version |
-| Parser malicious/crash/OOM | Version quarantined/failed, worker pool survives, no network/host escape | Process/container limits, timeout, safe error, operator review |
+| Parser malicious/crash/OOM | Version quarantined/failed, worker pool survives, no searchable chunks publish | Phase 3 allowlisted text parser rejects binary/PDF/archive/invalid UTF-8 and enforces byte/chunk limits; later sandboxed converters add process/container isolation |
 | Embedding partial batch | Version remains unpublished; completed items retained by set; retry missing/failed | Coverage query, per-item status/upsert, bounded backoff |
 | Redis unavailable | Authoritative data/status survives; queues/cache/rates degrade safely | Health/saturation alert, DB job fallback/pause, cache rebuild |
 | PostgreSQL unavailable | Authz/state-changing/search operations fail safely; no alternate authority | Timeouts/circuit control, HA/restore runbook, no blind retries |
@@ -40,3 +40,5 @@ Fail closed for identity, authorization, tenant ambiguity, active-version public
 ## Recovery evidence
 
 Each phase adds crash-point tests and an operator-visible repair path. Production hardening proves PostgreSQL restore, object recovery/versioning policy, derived-index rebuild, migration rollback/forward-fix, job reconciliation, checkpoint resume, secret rotation, and deletion propagation. A backup is not a recovery capability until restored and timed.
+
+Phase 3 recovery evidence covers deterministic parser/chunker unit tests, corrupt/binary/unsupported input failure tests, parser byte-limit enforcement, chunk-count enforcement, and integration coverage that published chunks remain tenant-scoped and are written only with ready document-version metadata.

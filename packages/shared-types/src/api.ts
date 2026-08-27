@@ -248,6 +248,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workspaces/{workspace_id}/documents/{document_id}/versions/{version_id}/chunks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Document Version Chunks */
+        get: operations["list_document_version_chunks_v1_workspaces__workspace_id__documents__document_id__versions__version_id__chunks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workspaces/{workspace_id}/ingestion-jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -303,6 +320,53 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ChunkListResponse */
+        ChunkListResponse: {
+            /** Items */
+            items: components["schemas"]["ChunkResponse"][];
+        };
+        /** ChunkResponse */
+        ChunkResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /**
+             * Document Version Id
+             * Format: uuid
+             */
+            document_version_id: string;
+            /** Ordinal */
+            ordinal: number;
+            /** Block Type */
+            block_type: string;
+            /** Heading */
+            heading: string | null;
+            /** Page Number */
+            page_number: number | null;
+            /** Start Char */
+            start_char: number;
+            /** End Char */
+            end_char: number;
+            /** Token Count */
+            token_count: number;
+            /** Content Hash */
+            content_hash: string;
+            /** Text */
+            text: string;
+            /** Safe Metadata */
+            safe_metadata: {
+                [key: string]: unknown;
+            };
+            /** Created At */
+            created_at: string;
+        };
         /** DocumentListResponse */
         DocumentListResponse: {
             /** Items */
@@ -378,12 +442,43 @@ export interface components {
             active: boolean;
             /** Created At */
             created_at: string;
+            /** Parser Name */
+            parser_name?: string | null;
+            /** Parser Version */
+            parser_version?: string | null;
+            /** Chunker Name */
+            chunker_name?: string | null;
+            /** Chunker Version */
+            chunker_version?: string | null;
+            /** Normalized Object Key */
+            normalized_object_key?: string | null;
+            /** Normalized Digest Sha256 */
+            normalized_digest_sha256?: string | null;
+            /**
+             * Chunk Count
+             * @default 0
+             */
+            chunk_count: number;
+            /**
+             * Character Count
+             * @default 0
+             */
+            character_count: number;
+            /**
+             * Token Count
+             * @default 0
+             */
+            token_count: number;
+            /** Safe Metadata */
+            safe_metadata?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * DocumentVersionStatus
          * @enum {string}
          */
-        DocumentVersionStatus: "upload_pending" | "ingestion_pending" | "verifying" | "ready" | "failed" | "cancelled";
+        DocumentVersionStatus: "upload_pending" | "ingestion_pending" | "verifying" | "parsing" | "normalizing" | "chunking" | "ready" | "failed" | "cancelled";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -445,7 +540,7 @@ export interface components {
          * IngestionJobState
          * @enum {string}
          */
-        IngestionJobState: "pending" | "claimed" | "verifying" | "publishing" | "succeeded" | "retry_wait" | "cancel_requested" | "cancelled" | "failed";
+        IngestionJobState: "pending" | "claimed" | "verifying" | "parsing" | "normalizing" | "chunking" | "publishing" | "succeeded" | "retry_wait" | "cancel_requested" | "cancelled" | "failed";
         /** MeResponse */
         MeResponse: {
             /**
@@ -1247,6 +1342,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentVersionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_version_chunks_v1_workspaces__workspace_id__documents__document_id__versions__version_id__chunks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                document_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChunkListResponse"];
                 };
             };
             /** @description Validation Error */

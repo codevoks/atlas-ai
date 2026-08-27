@@ -168,9 +168,14 @@ stateDiagram-v2
         [*] --> JobPending
         JobPending --> Claimed: lease acquired
         Claimed --> Verifying: expected version matched
-        Verifying --> Publishing: object digest and size matched
-        Publishing --> Succeeded: version marked READY and active
+        Verifying --> Parsing: object digest and size matched
+        Parsing --> Normalizing: supported text extracted
+        Normalizing --> Chunking: normalized artifact stored
+        Chunking --> Publishing: deterministic chunks prepared
+        Publishing --> Succeeded: chunks and version marked READY
         Verifying --> Failed: missing or corrupt object
+        Parsing --> Failed: unsupported, binary, invalid UTF-8, or oversized input
+        Chunking --> Failed: chunk limits exceeded
         JobPending --> CancelRequested: user cancel
         Claimed --> CancelRequested: user cancel
         CancelRequested --> Cancelled: cooperative worker stop
@@ -179,6 +184,49 @@ stateDiagram-v2
 ```
 
 Phase 2 uses API-hosted local signed upload handling for development. The adapter boundary preserves the production design: later S3-compatible storage replaces the local adapter without changing the document or ingestion state model.
+
+## 1C. Phase 3 implemented parsing, normalization, and chunking slice
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant K as Worker
+    participant O as Local object-store adapter
+    participant P as Text parser
+    participant N as Normalizer
+    participant C as Chunker
+    participant D as PostgreSQL
+
+    K->>D: Claim pending ingestion job lease
+    K->>O: Read uploaded object bytes
+    K->>K: Verify size, digest, media type, and binary signatures
+    K->>P: Parse allowlisted text/Markdown input
+    P-->>K: Typed blocks or safe validation failure
+    K->>N: Normalize Unicode, newlines, and whitespace
+    K->>O: Store normalized derived artifact under workspace prefix
+    K->>C: Build deterministic bounded chunks
+    K->>D: Transaction: replace version chunks, persist provenance/counts, mark version READY and job SUCCEEDED
+```
+
+```mermaid
+flowchart LR
+    Upload[Uploaded object\nworkspace-prefixed bytes]
+    Verify[Integrity and type verification]
+    Reject[Safe failed job\nno ready version]
+    Parsed[Parsed blocks\nheadings and paragraphs]
+    Normalized[Normalized artifact\nSHA-256 addressed]
+    Chunks[Chunk rows\nordinal span hash text metadata]
+    Ready[Ready document version\nparser and chunker provenance]
+
+    Upload --> Verify
+    Verify -->|unsupported binary PDF archive invalid UTF-8 oversized| Reject
+    Verify -->|supported text or Markdown| Parsed
+    Parsed --> Normalized
+    Normalized --> Chunks
+    Chunks --> Ready
+```
+
+Phase 3 publishes chunks only inside the final database transaction. Partial parser/chunker output is never visible as a ready document version.
 
 ## 2. Durable ingestion and atomic publication
 

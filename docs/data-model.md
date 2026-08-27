@@ -45,14 +45,15 @@ Workspace --< AuditEvent
 - At most one version per document is active/published. A version can be published only after all configured mandatory stages succeed.
 - Deletion prevents new reads immediately from the source of truth and propagates tombstones to derived indexes/caches asynchronously.
 
-Phase 2 implemented tables:
+Phase 3 implemented tables:
 
 - `sources`: workspace-scoped upload source registry with active/disabled state.
 - `upload_intents`: tenant-prefixed object key, creator, declared filename, media type, byte size, digest, expiry, lifecycle status, and finalized document-version reference.
 - `documents`: logical workspace document identity tied to a source and creator.
-- `document_versions`: immutable object reference, digest, media type, size, version number, active flag, parser configuration placeholder, and ingestion status.
-- `ingestion_jobs`: durable metadata-ingestion state, lease owner/expiry, heartbeat, progress, bounded attempts, cancellation flag, idempotency key, retry timing, and safe error fields.
+- `document_versions`: immutable object reference, digest, media type, size, version number, active flag, parser/chunker names and versions, normalized artifact key/digest, aggregate chunk/character/token counts, safe metadata, and ingestion status.
+- `ingestion_jobs`: durable ingestion state, lease owner/expiry, heartbeat, progress, bounded attempts, cancellation flag, idempotency key, retry timing, and safe error fields.
 - `job_events`: append-only safe state-transition history.
+- `chunks`: immutable deterministic chunk rows scoped by workspace and document version, ordered by ordinal, with structural coordinates, token counts, content hashes, text, and safe metadata.
 
 ### Jobs
 
@@ -71,16 +72,17 @@ Transitions require expected state/version and a valid lease when worker-owned. 
 
 The durable record and its outbox/job visibility are created in one database transaction. If a transport is later introduced, delivery is a hint to claim authoritative work, not the work itself.
 
-Phase 2 implements the prefix of this state machine:
+Phase 3 implements this prefix of the full retrieval-ingestion state machine:
 
 ```text
-PENDING -> CLAIMED -> VERIFYING -> PUBLISHING -> SUCCEEDED
+PENDING -> CLAIMED -> VERIFYING -> PARSING -> NORMALIZING -> CHUNKING
+        -> PUBLISHING -> SUCCEEDED
 PENDING|CLAIMED -> CANCEL_REQUESTED -> CANCELLED
-VERIFYING -> FAILED
+VERIFYING|PARSING|CHUNKING -> FAILED
 FAILED|RETRY_WAIT -> PENDING by authorized retry
 ```
 
-Parsing, normalization, chunking, embedding, and stage-level checkpoints are intentionally deferred until the later ingestion/retrieval phases.
+Embedding, retrieval indexing, and finer stage-level checkpoints are intentionally deferred until later retrieval phases.
 
 ### Chunks and embeddings
 

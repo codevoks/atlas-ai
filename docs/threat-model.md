@@ -110,3 +110,23 @@ Residual risks and follow-ups:
 - Magic-byte validation, malware scanning, parser sandboxing, archive-bomb controls, extracted text handling, chunking, embeddings, and retrieval authorization are deferred to later ingestion/retrieval phases.
 - Per-tenant upload quotas and rate limits are represented by size limits and permission checks in Phase 2 but still need durable quota ledgers before public exposure.
 - Automated orphan cleanup/reconciliation is designed but not scheduled in Phase 2; implementation belongs with production object-storage lifecycle or a dedicated maintenance worker.
+
+## Phase 3 implementation security review
+
+Implemented controls:
+
+- Parsing is allowlisted to deterministic text and Markdown-like inputs for the zero-cost path.
+- Binary magic bytes, PDFs, archives, OLE containers, PNG files, null bytes, invalid UTF-8, empty extracted text, oversized parser input, and excessive chunk output fail safely.
+- Parser and chunker names/versions, normalized artifact key/digest, counts, and safe metadata are persisted with the immutable document version.
+- Normalized derived artifacts are written under workspace-prefixed object keys and verified by SHA-256 digest.
+- Chunk rows are workspace-scoped, tied to one immutable document version, ordered deterministically, and published in the same transaction as ready version state.
+- Chunk preview APIs require active workspace membership and document-read permission; cross-tenant chunk lookups return non-disclosing `404`.
+- The web UI renders chunk text as escaped React text and does not treat extracted content as HTML or instructions.
+- Parser failures classify jobs as failed with safe error codes/messages and do not expose uploaded bytes or extracted content in logs/API errors.
+
+Residual risks and follow-ups:
+
+- The Phase 3 parser is intentionally narrow. PDF, office formats, OCR, archives, HTML sanitization, malware scanning, and sandboxed third-party converters remain deferred until their dedicated phases or evidence-backed demand.
+- The current text parser runs in-process because it handles only bounded UTF-8 text. Any richer converter must run behind the parser-sandbox boundary with CPU, memory, file-system, temp-path, and network controls.
+- Chunk text is stored directly in PostgreSQL for the initial retrieval path. Encryption, redaction policy, retention controls, and large-document storage optimization remain deployment/security hardening work.
+- Chunk quality parameters are deterministic defaults, not final retrieval-tuned values. Later evaluation phases must benchmark chunk size, overlap, and structure preservation before changing defaults.

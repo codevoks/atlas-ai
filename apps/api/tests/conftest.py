@@ -21,7 +21,7 @@ async def client() -> AsyncIterator[AsyncClient]:
         async with app.state.engine.begin() as connection:
             await connection.execute(
                 text(
-                    "TRUNCATE job_events, ingestion_jobs, document_versions, documents, "
+                    "TRUNCATE chunks, job_events, ingestion_jobs, document_versions, documents, "
                     "upload_intents, sources, idempotency_records, audit_events, "
                     "memberships, workspaces, users RESTART IDENTITY CASCADE"
                 )

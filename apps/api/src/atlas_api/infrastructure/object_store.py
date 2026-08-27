@@ -98,6 +98,32 @@ class LocalObjectStore:
             media_type=media_type,
         )
 
+    async def put_derived_bytes(
+        self, *, object_key: str, body: bytes, media_type: str
+    ) -> ObjectMetadata:
+        self._assert_safe_key(object_key)
+        digest = hashlib.sha256(body).hexdigest()
+        path = self._path_for(object_key)
+        if path.exists():
+            existing = path.read_bytes()
+            if hashlib.sha256(existing).hexdigest() != digest:
+                raise ConflictError("The object key already contains different bytes.")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(body)
+        return ObjectMetadata(
+            object_key=object_key,
+            byte_size=len(body),
+            digest_sha256=digest,
+            media_type=media_type,
+        )
+
+    async def get_bytes(self, object_key: str) -> bytes:
+        self._assert_safe_key(object_key)
+        path = self._path_for(object_key)
+        if not path.exists():
+            raise ResourceNotFoundError("The uploaded object was not found.")
+        return path.read_bytes()
+
     async def head(self, object_key: str) -> ObjectMetadata:
         self._assert_safe_key(object_key)
         path = self._path_for(object_key)

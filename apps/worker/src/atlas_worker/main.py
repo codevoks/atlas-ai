@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from atlas_api.application.ports import ChunkDraftRecord
 from atlas_api.config import Settings, get_settings
 from atlas_api.domain.errors import (
     DomainError,
@@ -22,6 +23,17 @@ from atlas_api.infrastructure.database import create_engine, create_session_fact
 from atlas_api.infrastructure.models import UploadIntentModel
 from atlas_api.infrastructure.object_store import LocalObjectStore
 from atlas_api.infrastructure.repositories import SqlAlchemyIngestionJobStore
+from atlas_worker.ingestion import (
+    CHUNKER_NAME,
+    CHUNKER_VERSION,
+    PARSER_NAME,
+    PARSER_VERSION,
+    chunk_document,
+    normalized_artifact_body,
+    normalized_artifact_key,
+    parse_document,
+    total_token_count,
+)
 
 
 class RunOnceResponse(BaseModel):
@@ -87,6 +99,7 @@ async def _run_once(
     *,
     session_factory: async_sessionmaker[AsyncSession],
     object_store: LocalObjectStore,
+    settings: Settings,
     worker_id: str,
 ) -> RunOnceResponse:
     async with session_factory() as session, session.begin():
@@ -139,6 +152,7 @@ async def _run_once(
             raise IntegrityViolationError(
                 "The stored object changed after finalization."
             )
+        body = await object_store.get_bytes(version.object_key)
     except DomainError as error:
         async with session_factory() as session, session.begin():
             store = SqlAlchemyIngestionJobStore(session)
@@ -163,19 +177,137 @@ async def _run_once(
 
     async with session_factory() as session, session.begin():
         store = SqlAlchemyIngestionJobStore(session)
-        publishing = await store.transition_job(
+        parsing = await store.transition_job(
             claimed.id,
             worker_id,
             verifying.version,
+            IngestionJobState.PARSING,
+            progress=45,
+            reason="parse_started",
+        )
+
+    try:
+        parsed = parse_document(
+            object_key=version.object_key,
+            media_type=version.media_type,
+            body=body,
+            settings=settings,
+        )
+    except DomainError as error:
+        async with session_factory() as session, session.begin():
+            store = SqlAlchemyIngestionJobStore(session)
+            failed = await store.transition_job(
+                claimed.id,
+                worker_id,
+                parsing.version,
+                IngestionJobState.FAILED,
+                progress=45,
+                reason="parse_failed",
+                error_class=RetryClass.PERMANENT,
+                error_code=error.code,
+                error_message=str(error),
+            )
+        return RunOnceResponse(
+            claimed=True,
+            job_id=failed.id,
+            state=failed.state,
+            progress=failed.progress,
+            error_code=failed.error_code,
+        )
+
+    async with session_factory() as session, session.begin():
+        store = SqlAlchemyIngestionJobStore(session)
+        normalizing = await store.transition_job(
+            claimed.id,
+            worker_id,
+            parsing.version,
+            IngestionJobState.NORMALIZING,
+            progress=58,
+            reason="normalize_started",
+        )
+
+    try:
+        chunks = chunk_document(parsed, settings)
+    except DomainError as error:
+        async with session_factory() as session, session.begin():
+            store = SqlAlchemyIngestionJobStore(session)
+            failed = await store.transition_job(
+                claimed.id,
+                worker_id,
+                normalizing.version,
+                IngestionJobState.FAILED,
+                progress=58,
+                reason="chunking_failed",
+                error_class=RetryClass.PERMANENT,
+                error_code=error.code,
+                error_message=str(error),
+            )
+        return RunOnceResponse(
+            claimed=True,
+            job_id=failed.id,
+            state=failed.state,
+            progress=failed.progress,
+            error_code=failed.error_code,
+        )
+    artifact_key = normalized_artifact_key(version.workspace_id, version.id)
+    artifact_metadata = await object_store.put_derived_bytes(
+        object_key=artifact_key,
+        body=normalized_artifact_body(parsed, chunks),
+        media_type="application/json",
+    )
+
+    async with session_factory() as session, session.begin():
+        store = SqlAlchemyIngestionJobStore(session)
+        chunking = await store.transition_job(
+            claimed.id,
+            worker_id,
+            normalizing.version,
+            IngestionJobState.CHUNKING,
+            progress=70,
+            reason="chunking_completed",
+        )
+
+    async with session_factory() as session, session.begin():
+        store = SqlAlchemyIngestionJobStore(session)
+        publishing = await store.transition_job(
+            claimed.id,
+            worker_id,
+            chunking.version,
             IngestionJobState.PUBLISHING,
-            progress=75,
+            progress=85,
             reason="publish_started",
         )
 
     async with session_factory() as session, session.begin():
         store = SqlAlchemyIngestionJobStore(session)
         completed = await store.publish_document_version(
-            claimed.id, worker_id, publishing.version
+            claimed.id,
+            worker_id,
+            publishing.version,
+            chunks=[
+                ChunkDraftRecord(
+                    ordinal=chunk.ordinal,
+                    block_type=chunk.block_type,
+                    heading=chunk.heading,
+                    page_number=chunk.page_number,
+                    start_char=chunk.start_char,
+                    end_char=chunk.end_char,
+                    token_count=chunk.token_count,
+                    content_hash=chunk.content_hash,
+                    text=chunk.text,
+                    safe_metadata=chunk.safe_metadata,
+                )
+                for chunk in chunks
+            ],
+            parser_name=PARSER_NAME,
+            parser_version=PARSER_VERSION,
+            chunker_name=CHUNKER_NAME,
+            chunker_version=CHUNKER_VERSION,
+            normalized_object_key=artifact_key,
+            normalized_digest_sha256=artifact_metadata.digest_sha256,
+            character_count=len(parsed.normalized_text),
+            token_count=total_token_count(chunks),
+            safe_metadata=parsed.metadata,
         )
     return RunOnceResponse(
         claimed=True,
@@ -222,6 +354,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await _run_once(
             session_factory=app.state.session_factory,
             object_store=app.state.object_store,
+            settings=app.state.settings,
             worker_id=app.state.worker_id,
         )
 

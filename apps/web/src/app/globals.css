@@ -90,6 +90,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px c
 .workspace-title-row { align-items: center; margin-top: 34px; }
 .workspace-title-row h1 { margin-bottom: 10px; }
 .mono { font-family: var(--font-mono), monospace; font-size: 0.8rem; }
+.chunk-preview { max-width: 560px; border-left: 2px solid var(--accent-soft); padding-left: 10px; color: #c4d1c8; }
 .members-layout { padding-top: 10px; }
 .member-row { display: grid; grid-template-columns: auto minmax(140px, 1fr) auto auto; gap: 14px; align-items: center; padding: 14px; }
 .member-actions select { min-width: 110px; }
