@@ -1,0 +1,23 @@
+{
+  "name": "@atlas/shared-types",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/api.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "generate": "openapi-typescript ../../apps/api/openapi.json -o src/api.ts",
+    "lint": "eslint src --max-warnings=0",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node -e \"console.log('shared-types: contract compilation passed')\""
+  },
+  "devDependencies": {
+    "@atlas/config": "workspace:*",
+    "eslint": "^9.39.1",
+    "openapi-typescript": "^7.10.1",
+    "typescript": "^5.9.3"
+  }
+}
+

@@ -1,0 +1,23 @@
+{
+  "name": "atlas-ai",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.13.1",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "contracts": "pnpm --filter @atlas/shared-types generate",
+    "db:migrate": "pnpm --filter @atlas/api db:migrate",
+    "db:downgrade": "pnpm --filter @atlas/api db:downgrade"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.6"
+  }
+}
+

@@ -1,0 +1,16 @@
+{
+  "name": "@atlas/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "../../.venv/bin/python -m compileall -q src",
+    "dev": "../../.venv/bin/uvicorn atlas_api.main:app --app-dir src --host 0.0.0.0 --port 8000 --reload",
+    "lint": "../../.venv/bin/ruff check src tests migrations && ../../.venv/bin/ruff format --check src tests migrations",
+    "typecheck": "../../.venv/bin/mypy src",
+    "test": "../../.venv/bin/pytest -q",
+    "db:migrate": "../../.venv/bin/alembic upgrade head",
+    "db:downgrade": "../../.venv/bin/alembic downgrade base",
+    "openapi": "../../.venv/bin/python scripts/export_openapi.py"
+  }
+}
+

@@ -1,0 +1,12 @@
+{
+  "name": "@atlas/worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "../../.venv/bin/python -m compileall -q src",
+    "dev": "../../.venv/bin/uvicorn atlas_worker.main:app --app-dir src --host 0.0.0.0 --port 8001 --reload",
+    "lint": "../../.venv/bin/ruff check src tests && ../../.venv/bin/ruff format --check src tests",
+    "typecheck": "../../.venv/bin/mypy src",
+    "test": "../../.venv/bin/pytest -q"
+  }
+}

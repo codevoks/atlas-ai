@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "atlas-worker"
+version = "0.1.0"
+description = "Atlas AI durable worker process shell"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi==0.136.3",
+  "uvicorn[standard]==0.35.0"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/atlas_worker"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["atlas_worker"]
+
