@@ -68,3 +68,12 @@ pnpm --filter @atlas/web dev
 ```
 
 The web app uses deterministic development sign-in locally. Production must use real OIDC/JWKS configuration; development auth is rejected in production settings.
+
+## Engineering documentation
+
+- `docs/architecture.md` — system architecture and component responsibilities
+- `docs/system-design-visuals.md` — architecture and state-machine diagrams
+- `docs/decisions.md` — cross-phase architecture decisions and evidence gates
+- `docs/threat-model.md` — security objectives, trust boundaries, and phase reviews
+- `docs/development-workflow.md` — phase workflow, validation, and repository hygiene
+- `docs/phases/` — implementation contracts for each phase

@@ -41,7 +41,7 @@ Reason through upload finalized but job publication interrupted; duplicate/stale
 
 ## Testing and review strategy
 
-Phase 0 validation is documentary: link/invariant review, requirement-to-phase trace, data-flow/threat walkthrough, failure-table review, capacity worksheet, and API boundary review. Verify `AGENTS.md` is concise, later phases contain all mandated headings, `.local-private/` is ignored, and private/personal material is not tracked.
+Phase 0 validation is documentary: link/invariant review, requirement-to-phase trace, data-flow/threat walkthrough, failure-table review, capacity worksheet, and API boundary review. Verify public development guidance is concise, later phases contain all mandated headings, local/private paths are ignored, and private/personal material is not tracked.
 
 ## Acceptance criteria
 
