@@ -11,7 +11,14 @@ from atlas_api.application.embeddings import (
     EmbeddingBatchPlanner,
     EmbeddingRequest,
 )
+from atlas_api.application.generation import (
+    CitationValidator,
+    ContextBuilder,
+    DeterministicLocalGenerator,
+    DeterministicReranker,
+)
 from atlas_api.application.ports import (
+    AnswerRunRecord,
     ChunkEmbeddingWriteRecord,
     ChunkRecord,
     DocumentRecord,
@@ -34,7 +41,7 @@ from atlas_api.domain.errors import (
     ResourceNotFoundError,
     ValidationError,
 )
-from atlas_api.domain.models import Actor, Permission, Role
+from atlas_api.domain.models import Actor, AnswerRunStatus, Permission, Role
 from atlas_api.domain.policy import can_manage_role, require_permission
 from atlas_api.infrastructure.object_store import LocalObjectStore
 
@@ -671,3 +678,96 @@ class SemanticSearchService:
                 coverage_after.total_ready_chunks - coverage_after.embedded_ready_chunks, 0
             ),
         )
+
+
+class AnswerService:
+    def __init__(self, transaction_factory: TransactionFactory, settings: Settings) -> None:
+        self._transactions = transaction_factory
+        self._settings = settings
+        self._search = SemanticSearchService(transaction_factory, settings)
+        self._reranker = DeterministicReranker()
+        self._context_builder = ContextBuilder(settings)
+        self._generator = DeterministicLocalGenerator(settings)
+        self._citation_validator = CitationValidator()
+
+    async def answer(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        query: str,
+        top_k: int | None,
+        filters: SearchFilter,
+        retrieval_mode: Literal["semantic", "lexical", "hybrid"] = "hybrid",
+    ) -> AnswerRunRecord:
+        clean_query = " ".join(query.split())
+        if not clean_query:
+            raise ValidationError("Answer query must not be empty.")
+        if len(clean_query) > self._settings.embedding_max_text_chars:
+            raise ValidationError("Answer query exceeds the configured length limit.")
+        candidates, retrieval_debug = await self._search.search(
+            actor=actor,
+            workspace_id=workspace_id,
+            query=clean_query,
+            top_k=top_k,
+            filters=filters,
+            mode=retrieval_mode,
+        )
+        reranked = self._reranker.rerank(candidates)
+        context = self._context_builder.build(reranked)
+        generated = self._generator.generate(query=clean_query, context=context)
+        self._citation_validator.validate(
+            answer_text=generated.text,
+            evidence=context.evidence,
+            citations=generated.citations,
+        )
+        status = AnswerRunStatus.SUCCEEDED if generated.citations else AnswerRunStatus.REFUSED
+        grounding_status = "citation_verified" if generated.citations else "no_evidence"
+        warnings = sorted(set([*context.warnings, *generated.warnings]))
+
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.DOCUMENT_READ)
+            return await tx.documents.create_answer_run(
+                actor=actor,
+                workspace_id=workspace_id,
+                query=clean_query,
+                status=status,
+                answer_text=generated.text,
+                retrieval_mode=retrieval_mode,
+                retrieval_config_version=str(retrieval_debug["retrieval_config_version"]),
+                generation_provider=self._generator.provider,
+                generation_model=self._generator.model,
+                generation_model_version=self._generator.model_version,
+                prompt_version=self._generator.prompt_version,
+                grounding_status=grounding_status,
+                warnings=warnings,
+                input_tokens=context.input_tokens,
+                output_tokens=generated.output_tokens,
+                total_cost_usd=0.0,
+                latency_ms=generated.latency_ms,
+                evidence=context.evidence,
+                citations=generated.citations,
+            )
+
+    async def get_answer_run(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        answer_run_id: uuid.UUID,
+    ) -> AnswerRunRecord:
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.DOCUMENT_READ)
+            record = await tx.documents.get_answer_run(
+                workspace_id=workspace_id,
+                answer_run_id=answer_run_id,
+            )
+            if record is None:
+                raise ResourceNotFoundError()
+            return record

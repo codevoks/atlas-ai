@@ -12,7 +12,12 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from atlas_api.api.routes import router
-from atlas_api.application.services import DocumentService, SemanticSearchService, WorkspaceService
+from atlas_api.application.services import (
+    AnswerService,
+    DocumentService,
+    SemanticSearchService,
+    WorkspaceService,
+)
 from atlas_api.config import Settings, get_settings
 from atlas_api.domain.errors import ConflictError, DomainError
 from atlas_api.infrastructure.database import create_engine, create_session_factory
@@ -67,6 +72,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.semantic_search_service = SemanticSearchService(
             transaction_factory, resolved_settings
         )
+        app.state.answer_service = AnswerService(transaction_factory, resolved_settings)
         yield
         await engine.dispose()
 

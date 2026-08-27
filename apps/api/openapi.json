@@ -1182,6 +1182,122 @@
         }
       }
     },
+    "/v1/workspaces/{workspace_id}/answers": {
+      "post": {
+        "tags": [
+          "answers"
+        ],
+        "summary": "Create Answer",
+        "operationId": "create_answer_v1_workspaces__workspace_id__answers_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnswerResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/answer-runs/{answer_run_id}": {
+      "get": {
+        "tags": [
+          "answers"
+        ],
+        "summary": "Get Answer Run",
+        "operationId": "get_answer_run_v1_workspaces__workspace_id__answer_runs__answer_run_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "answer_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Answer Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnswerResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/workspaces/{workspace_id}/embeddings/backfill": {
       "post": {
         "tags": [
@@ -1417,6 +1533,275 @@
   },
   "components": {
     "schemas": {
+      "AnswerEvidenceResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "rank": {
+            "type": "integer",
+            "title": "Rank"
+          },
+          "chunk_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Chunk Id"
+          },
+          "document_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Version Id"
+          },
+          "source_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Id"
+          },
+          "document_title": {
+            "type": "string",
+            "title": "Document Title"
+          },
+          "retrieval_stage": {
+            "type": "string",
+            "title": "Retrieval Stage"
+          },
+          "retrieval_score": {
+            "type": "number",
+            "title": "Retrieval Score"
+          },
+          "semantic_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semantic Score"
+          },
+          "lexical_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lexical Score"
+          },
+          "rrf_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rrf Score"
+          },
+          "quote": {
+            "type": "string",
+            "title": "Quote"
+          },
+          "start_char": {
+            "type": "integer",
+            "title": "Start Char"
+          },
+          "end_char": {
+            "type": "integer",
+            "title": "End Char"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "rank",
+          "chunk_id",
+          "document_id",
+          "document_version_id",
+          "source_id",
+          "document_title",
+          "retrieval_stage",
+          "retrieval_score",
+          "semantic_score",
+          "lexical_score",
+          "rrf_score",
+          "quote",
+          "start_char",
+          "end_char"
+        ],
+        "title": "AnswerEvidenceResponse"
+      },
+      "AnswerRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Query"
+          },
+          "retrieval_mode": {
+            "type": "string",
+            "enum": [
+              "semantic",
+              "lexical",
+              "hybrid"
+            ],
+            "title": "Retrieval Mode",
+            "default": "hybrid"
+          },
+          "top_k": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 20.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top K"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/SemanticSearchFilters"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "AnswerRequest"
+      },
+      "AnswerResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "answer_text": {
+            "type": "string",
+            "title": "Answer Text"
+          },
+          "retrieval_mode": {
+            "type": "string",
+            "title": "Retrieval Mode"
+          },
+          "retrieval_config_version": {
+            "type": "string",
+            "title": "Retrieval Config Version"
+          },
+          "generation_provider": {
+            "type": "string",
+            "title": "Generation Provider"
+          },
+          "generation_model": {
+            "type": "string",
+            "title": "Generation Model"
+          },
+          "generation_model_version": {
+            "type": "string",
+            "title": "Generation Model Version"
+          },
+          "prompt_version": {
+            "type": "string",
+            "title": "Prompt Version"
+          },
+          "grounding_status": {
+            "type": "string",
+            "title": "Grounding Status"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "input_tokens": {
+            "type": "integer",
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "title": "Output Tokens"
+          },
+          "total_cost_usd": {
+            "type": "number",
+            "title": "Total Cost Usd"
+          },
+          "latency_ms": {
+            "type": "integer",
+            "title": "Latency Ms"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/AnswerEvidenceResponse"
+            },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/CitationResponse"
+            },
+            "type": "array",
+            "title": "Citations"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "status",
+          "query",
+          "answer_text",
+          "retrieval_mode",
+          "retrieval_config_version",
+          "generation_provider",
+          "generation_model",
+          "generation_model_version",
+          "prompt_version",
+          "grounding_status",
+          "warnings",
+          "input_tokens",
+          "output_tokens",
+          "total_cost_usd",
+          "latency_ms",
+          "evidence",
+          "citations",
+          "created_at"
+        ],
+        "title": "AnswerResponse"
+      },
       "ChunkListResponse": {
         "properties": {
           "items": {
@@ -1528,6 +1913,84 @@
           "created_at"
         ],
         "title": "ChunkResponse"
+      },
+      "CitationResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "marker": {
+            "type": "string",
+            "title": "Marker"
+          },
+          "evidence_rank": {
+            "type": "integer",
+            "title": "Evidence Rank"
+          },
+          "answer_evidence_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Answer Evidence Id"
+          },
+          "chunk_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Chunk Id"
+          },
+          "document_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Version Id"
+          },
+          "quote": {
+            "type": "string",
+            "title": "Quote"
+          },
+          "evidence_start_char": {
+            "type": "integer",
+            "title": "Evidence Start Char"
+          },
+          "evidence_end_char": {
+            "type": "integer",
+            "title": "Evidence End Char"
+          },
+          "answer_start_char": {
+            "type": "integer",
+            "title": "Answer Start Char"
+          },
+          "answer_end_char": {
+            "type": "integer",
+            "title": "Answer End Char"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "marker",
+          "evidence_rank",
+          "answer_evidence_id",
+          "chunk_id",
+          "document_id",
+          "document_version_id",
+          "quote",
+          "evidence_start_char",
+          "evidence_end_char",
+          "answer_start_char",
+          "answer_end_char",
+          "status"
+        ],
+        "title": "CitationResponse"
       },
       "DocumentListResponse": {
         "properties": {

@@ -14,10 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from atlas_api.application.embeddings import cosine_similarity
 from atlas_api.application.ports import (
+    AnswerEvidenceDraft,
+    AnswerEvidenceRecord,
+    AnswerRunRecord,
     ChunkDraftRecord,
     ChunkEmbeddingDraftRecord,
     ChunkEmbeddingWriteRecord,
     ChunkRecord,
+    CitationDraft,
     DocumentRecord,
     DocumentStore,
     DocumentVersionRecord,
@@ -31,13 +35,16 @@ from atlas_api.application.ports import (
     SourceRecord,
     Transaction,
     UploadIntentRecord,
+    ValidatedCitationRecord,
     WorkspaceRecord,
     WorkspaceStore,
 )
 from atlas_api.domain.errors import ConflictError, ResourceNotFoundError
 from atlas_api.domain.models import (
     Actor,
+    AnswerRunStatus,
     ChunkEmbeddingStatus,
+    CitationValidationStatus,
     DocumentStatus,
     DocumentVersionStatus,
     EmbeddingSetStatus,
@@ -52,9 +59,12 @@ from atlas_api.domain.models import (
     UploadIntentStatus,
 )
 from atlas_api.infrastructure.models import (
+    AnswerEvidenceModel,
+    AnswerRunModel,
     AuditEventModel,
     ChunkEmbeddingModel,
     ChunkModel,
+    CitationModel,
     DocumentModel,
     DocumentVersionModel,
     EmbeddingSetModel,
@@ -1002,6 +1012,7 @@ class SqlAlchemyDocumentStore:
                     start_char=chunk.start_char,
                     end_char=chunk.end_char,
                     snippet=self._snippet(chunk.text),
+                    text=chunk.text,
                     distance=round(1.0 - score, 10),
                     score=round(score, 10),
                     retrieval_stage="semantic",
@@ -1070,6 +1081,7 @@ class SqlAlchemyDocumentStore:
                 start_char=chunk.start_char,
                 end_char=chunk.end_char,
                 snippet=self._snippet(chunk.text),
+                text=chunk.text,
                 distance=round(1.0 - float(lexical_score), 10),
                 score=round(float(lexical_score), 10),
                 retrieval_stage="lexical",
@@ -1078,6 +1090,146 @@ class SqlAlchemyDocumentStore:
             )
             for index, (chunk, version, document, lexical_score) in enumerate(rows, start=1)
         ]
+
+    async def create_answer_run(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        query: str,
+        status: AnswerRunStatus,
+        answer_text: str,
+        retrieval_mode: str,
+        retrieval_config_version: str,
+        generation_provider: str,
+        generation_model: str,
+        generation_model_version: str,
+        prompt_version: str,
+        grounding_status: str,
+        warnings: list[str],
+        input_tokens: int,
+        output_tokens: int,
+        total_cost_usd: float,
+        latency_ms: int,
+        evidence: list[AnswerEvidenceDraft],
+        citations: list[CitationDraft],
+    ) -> AnswerRunRecord:
+        answer = AnswerRunModel(
+            workspace_id=workspace_id,
+            created_by_user_id=actor.user_id,
+            query_text=query,
+            status=status.value,
+            answer_text=answer_text,
+            retrieval_mode=retrieval_mode,
+            retrieval_config_version=retrieval_config_version,
+            generation_provider=generation_provider,
+            generation_model=generation_model,
+            generation_model_version=generation_model_version,
+            prompt_version=prompt_version,
+            grounding_status=grounding_status,
+            warnings=warnings,
+            context_config={
+                "evidence_count": len(evidence),
+                "query_persisted": True,
+                "content_telemetry": False,
+            },
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_cost_usd=total_cost_usd,
+            latency_ms=latency_ms,
+        )
+        self._session.add(answer)
+        await self._session.flush()
+
+        evidence_by_rank: dict[int, AnswerEvidenceModel] = {}
+        for item in evidence:
+            model = AnswerEvidenceModel(
+                workspace_id=workspace_id,
+                answer_run_id=answer.id,
+                chunk_id=item.candidate.chunk_id,
+                document_id=item.candidate.document_id,
+                document_version_id=item.candidate.document_version_id,
+                source_id=item.candidate.source_id,
+                rank=item.rank,
+                document_title=item.candidate.document_title,
+                retrieval_stage=item.candidate.retrieval_stage,
+                retrieval_score=item.candidate.score,
+                semantic_score=item.candidate.semantic_score,
+                lexical_score=item.candidate.lexical_score,
+                rrf_score=item.candidate.rrf_score,
+                quote=item.context_text,
+                start_char=item.candidate.start_char,
+                end_char=item.candidate.start_char + len(item.context_text),
+            )
+            self._session.add(model)
+            evidence_by_rank[item.rank] = model
+        await self._session.flush()
+
+        for citation in citations:
+            evidence_model = evidence_by_rank.get(citation.evidence_rank)
+            if evidence_model is None:
+                raise ConflictError("Citation references unknown answer evidence.")
+            offset = evidence_model.quote.find(citation.quote)
+            if offset < 0:
+                raise ConflictError("Citation quote does not exist in answer evidence.")
+            self._session.add(
+                CitationModel(
+                    workspace_id=workspace_id,
+                    answer_run_id=answer.id,
+                    answer_evidence_id=evidence_model.id,
+                    marker=citation.marker,
+                    answer_start_char=citation.answer_start_char,
+                    answer_end_char=citation.answer_end_char,
+                    evidence_start_char=evidence_model.start_char + offset,
+                    evidence_end_char=evidence_model.start_char + offset + len(citation.quote),
+                    quote=citation.quote,
+                    status=CitationValidationStatus.VERIFIED.value,
+                )
+            )
+        await self._session.flush()
+        record = await self.get_answer_run(workspace_id=workspace_id, answer_run_id=answer.id)
+        if record is None:
+            raise ConflictError("The answer run could not be reloaded.")
+        return record
+
+    async def get_answer_run(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        answer_run_id: uuid.UUID,
+    ) -> AnswerRunRecord | None:
+        answer = await self._session.scalar(
+            select(AnswerRunModel).where(
+                AnswerRunModel.workspace_id == workspace_id,
+                AnswerRunModel.id == answer_run_id,
+            )
+        )
+        if answer is None:
+            return None
+        evidence_rows = (
+            await self._session.scalars(
+                select(AnswerEvidenceModel)
+                .where(
+                    AnswerEvidenceModel.workspace_id == workspace_id,
+                    AnswerEvidenceModel.answer_run_id == answer_run_id,
+                )
+                .order_by(AnswerEvidenceModel.rank.asc(), AnswerEvidenceModel.id.asc())
+            )
+        ).all()
+        citation_rows = (
+            await self._session.scalars(
+                select(CitationModel)
+                .where(
+                    CitationModel.workspace_id == workspace_id,
+                    CitationModel.answer_run_id == answer_run_id,
+                )
+                .order_by(CitationModel.answer_start_char.asc(), CitationModel.id.asc())
+            )
+        ).all()
+        evidence_by_id = {item.id: item for item in evidence_rows}
+        return self._answer_run_record(
+            answer, list(evidence_rows), list(citation_rows), evidence_by_id
+        )
 
     async def embedding_coverage(
         self, workspace_id: uuid.UUID, embedding_set_id: uuid.UUID
@@ -1321,6 +1473,77 @@ class SqlAlchemyDocumentStore:
             text=chunk.text,
             safe_metadata=chunk.safe_metadata,
             created_at=chunk.created_at,
+        )
+
+    @staticmethod
+    def _answer_run_record(
+        answer: AnswerRunModel,
+        evidence_rows: list[AnswerEvidenceModel],
+        citation_rows: list[CitationModel],
+        evidence_by_id: dict[uuid.UUID, AnswerEvidenceModel],
+    ) -> AnswerRunRecord:
+        evidence = [
+            AnswerEvidenceRecord(
+                id=item.id,
+                rank=item.rank,
+                chunk_id=item.chunk_id,
+                document_id=item.document_id,
+                document_version_id=item.document_version_id,
+                source_id=item.source_id,
+                document_title=item.document_title,
+                retrieval_stage=item.retrieval_stage,
+                retrieval_score=item.retrieval_score,
+                semantic_score=item.semantic_score,
+                lexical_score=item.lexical_score,
+                rrf_score=item.rrf_score,
+                quote=item.quote,
+                start_char=item.start_char,
+                end_char=item.end_char,
+            )
+            for item in evidence_rows
+        ]
+        citations: list[ValidatedCitationRecord] = []
+        for item in citation_rows:
+            evidence_item = evidence_by_id[item.answer_evidence_id]
+            citations.append(
+                ValidatedCitationRecord(
+                    id=item.id,
+                    marker=item.marker,
+                    evidence_rank=evidence_item.rank,
+                    answer_evidence_id=item.answer_evidence_id,
+                    chunk_id=evidence_item.chunk_id,
+                    document_id=evidence_item.document_id,
+                    document_version_id=evidence_item.document_version_id,
+                    quote=item.quote,
+                    evidence_start_char=item.evidence_start_char,
+                    evidence_end_char=item.evidence_end_char,
+                    answer_start_char=item.answer_start_char,
+                    answer_end_char=item.answer_end_char,
+                    status=CitationValidationStatus(item.status),
+                )
+            )
+        return AnswerRunRecord(
+            id=answer.id,
+            workspace_id=answer.workspace_id,
+            created_by_user_id=answer.created_by_user_id,
+            status=AnswerRunStatus(answer.status),
+            query=answer.query_text,
+            answer_text=answer.answer_text,
+            retrieval_mode=answer.retrieval_mode,
+            retrieval_config_version=answer.retrieval_config_version,
+            generation_provider=answer.generation_provider,
+            generation_model=answer.generation_model,
+            generation_model_version=answer.generation_model_version,
+            prompt_version=answer.prompt_version,
+            grounding_status=answer.grounding_status,
+            warnings=list(answer.warnings),
+            input_tokens=answer.input_tokens,
+            output_tokens=answer.output_tokens,
+            total_cost_usd=answer.total_cost_usd,
+            latency_ms=answer.latency_ms,
+            evidence=evidence,
+            citations=citations,
+            created_at=answer.created_at,
         )
 
     @staticmethod

@@ -45,7 +45,7 @@ Workspace --< AuditEvent
 - At most one version per document is active/published. A version can be published only after all configured mandatory stages succeed.
 - Deletion prevents new reads immediately from the source of truth and propagates tombstones to derived indexes/caches asynchronously.
 
-Phase 5 implemented tables and indexes:
+Phase 6 implemented tables and indexes:
 
 - `sources`: workspace-scoped upload source registry with active/disabled state.
 - `upload_intents`: tenant-prefixed object key, creator, declared filename, media type, byte size, digest, expiry, lifecycle status, and finalized document-version reference.
@@ -57,6 +57,9 @@ Phase 5 implemented tables and indexes:
 - `embedding_sets`: workspace-scoped provider/model/version/dimension/normalization/config lifecycle rows for vector-space provenance and migration.
 - `chunk_embeddings`: one normalized vector per `(chunk_id, embedding_set_id)` with status and token count. Phase 4 stores vectors as PostgreSQL JSONB for the zero-cost exact-cosine baseline; pgvector ANN indexes remain an evidence-gated migration.
 - `ix_chunks_fts_english`: a PostgreSQL GIN expression index on `to_tsvector('english', chunks.text)` for the zero-cost lexical retrieval baseline. It is a derived access path over already-authorized chunk text, not a new authoritative data store.
+- `answer_runs`: workspace/user-scoped answer execution record with query, answer text, status, retrieval config, generation provider/model/version, prompt version, grounding status, warnings, context config, token counts, zero-cost amount, latency, and timestamps.
+- `answer_evidence`: immutable evidence snapshot per answer run, including chunk/document/version/source identities, retrieval stage and scores, context rank, quote text, and source span.
+- `citations`: validated answer marker to answer-evidence reference with answer span, evidence span, quote, and validation status.
 
 ### Jobs
 
@@ -85,7 +88,7 @@ VERIFYING|PARSING|CHUNKING|EMBEDDING -> FAILED
 FAILED|RETRY_WAIT -> PENDING by authorized retry
 ```
 
-Reranking, generation, and finer stage-level checkpoints are intentionally deferred until later retrieval phases.
+Hosted reranking/generation, streaming, tools, and finer stage-level checkpoints are intentionally deferred until later phases.
 
 ### Chunks and embeddings
 

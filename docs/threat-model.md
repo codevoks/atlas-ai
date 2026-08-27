@@ -147,7 +147,7 @@ Residual risks and deferrals:
 
 - Phase 4 uses an exact PostgreSQL JSONB vector baseline for the zero-cost path. pgvector ANN index adoption is deferred until the local stack deliberately includes the extension and query-plan/recall/latency evidence justifies it.
 - Embedding inversion/linkability remains a privacy risk. Raw vector export, tenant analytics, retention policy, and provider data-retention policy require later dedicated controls before hosted providers are enabled.
-- Search is semantic-only evidence retrieval. Lexical/hybrid retrieval, reranking, grounded generation, citation validation, and adversarial prompt-injection evaluation remain deferred to later phases.
+- Advanced semantic-index privacy controls, provider retention policies, ANN indexing, and evaluation-driven retrieval tuning remain deferred to later phases.
 
 ## Phase 5 implementation security review
 
@@ -166,3 +166,23 @@ Residual risks and deferrals:
 - Phase 5 executes semantic and lexical retrieval in the existing API transaction path. True branch timeouts, cancellation propagation, and parallel orchestration are represented by interfaces/configuration but require additional infrastructure before high-latency providers are enabled.
 - PostgreSQL FTS uses an English analyzer only. Multilingual analyzers, synonyms, phrase tuning, entity-aware search, OpenSearch, caching, and learned/weighted fusion remain deferred until evaluated.
 - Retrieval debug metadata is safe for local development, but any production debug access should be role-gated and retention-controlled before exposing tenant-admin diagnostics broadly.
+
+## Phase 6 implementation security review
+
+Implemented controls:
+
+- Answer creation authorizes `document:read` before retrieval and rechecks active workspace membership before persisting answer runs.
+- Generation receives only retrieved evidence selected by the context builder; no tools, secrets, arbitrary HTTP, or provider credentials are available in the Phase 6 generator.
+- Retrieved text is treated as untrusted data. Prompt-injection-like phrases are detected, warnings are surfaced, and injection sentences are avoided when safe evidence sentences are available.
+- Citation validation checks that every generated citation marker references supplied context evidence and that the quoted text exists in that evidence before the answer is stored as verified.
+- Answer runs freeze immutable answer evidence and citation rows with chunk, document, version, source, rank, score, quote, and span provenance.
+- Cross-tenant answer creation and answer-run retrieval return non-disclosing `404` through the existing membership boundary.
+- No-evidence questions produce a labeled refusal instead of unsupported answer text.
+- The zero-cost path uses deterministic local reranking/generation and does not call paid model APIs, hosted rerankers, managed search, cloud resources, or large local model downloads.
+
+Residual risks and deferrals:
+
+- The Phase 6 deterministic generator is a correctness baseline, not a production-quality language model. Hosted model adapters require explicit opt-in plus privacy, quality, latency, and cost review.
+- Citation validation is quote/span based; richer claim-level support analysis, contradiction handling, and faithfulness metrics belong to the evaluation and advanced RAG phases.
+- Streaming is intentionally disabled because safe partial-output validation requires a separate design.
+- Production debug/retention policy for persisted query and answer content needs deployment-specific controls before external customer use.

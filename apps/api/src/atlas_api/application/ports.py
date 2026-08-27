@@ -8,7 +8,9 @@ from typing import Literal, Protocol
 
 from atlas_api.domain.models import (
     Actor,
+    AnswerRunStatus,
     ChunkEmbeddingStatus,
+    CitationValidationStatus,
     DocumentStatus,
     DocumentVersionStatus,
     EmbeddingSetStatus,
@@ -203,6 +205,7 @@ class SearchCandidate:
     start_char: int
     end_char: int
     snippet: str
+    text: str
     distance: float
     score: float
     retrieval_stage: Literal["semantic", "lexical", "hybrid"]
@@ -235,6 +238,83 @@ class EmbeddingBackfillResult:
     missing_before: int
     embedded_count: int
     missing_after: int
+
+
+@dataclass(frozen=True, slots=True)
+class AnswerEvidenceDraft:
+    candidate: SearchCandidate
+    rank: int
+    context_text: str
+
+
+@dataclass(frozen=True, slots=True)
+class CitationDraft:
+    marker: str
+    evidence_rank: int
+    quote: str
+    answer_start_char: int
+    answer_end_char: int
+
+
+@dataclass(frozen=True, slots=True)
+class ValidatedCitationRecord:
+    id: uuid.UUID
+    marker: str
+    evidence_rank: int
+    answer_evidence_id: uuid.UUID
+    chunk_id: uuid.UUID
+    document_id: uuid.UUID
+    document_version_id: uuid.UUID
+    quote: str
+    evidence_start_char: int
+    evidence_end_char: int
+    answer_start_char: int
+    answer_end_char: int
+    status: CitationValidationStatus
+
+
+@dataclass(frozen=True, slots=True)
+class AnswerEvidenceRecord:
+    id: uuid.UUID
+    rank: int
+    chunk_id: uuid.UUID
+    document_id: uuid.UUID
+    document_version_id: uuid.UUID
+    source_id: uuid.UUID
+    document_title: str
+    retrieval_stage: str
+    retrieval_score: float
+    semantic_score: float | None
+    lexical_score: float | None
+    rrf_score: float | None
+    quote: str
+    start_char: int
+    end_char: int
+
+
+@dataclass(frozen=True, slots=True)
+class AnswerRunRecord:
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    created_by_user_id: uuid.UUID
+    status: AnswerRunStatus
+    query: str
+    answer_text: str
+    retrieval_mode: str
+    retrieval_config_version: str
+    generation_provider: str
+    generation_model: str
+    generation_model_version: str
+    prompt_version: str
+    grounding_status: str
+    warnings: list[str]
+    input_tokens: int
+    output_tokens: int
+    total_cost_usd: float
+    latency_ms: int
+    evidence: list[AnswerEvidenceRecord]
+    citations: list[ValidatedCitationRecord]
+    created_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -425,6 +505,37 @@ class DocumentStore(Protocol):
         embedding_set_id: uuid.UUID,
         embeddings: list[ChunkEmbeddingWriteRecord],
     ) -> int: ...
+
+    async def create_answer_run(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        query: str,
+        status: AnswerRunStatus,
+        answer_text: str,
+        retrieval_mode: str,
+        retrieval_config_version: str,
+        generation_provider: str,
+        generation_model: str,
+        generation_model_version: str,
+        prompt_version: str,
+        grounding_status: str,
+        warnings: list[str],
+        input_tokens: int,
+        output_tokens: int,
+        total_cost_usd: float,
+        latency_ms: int,
+        evidence: list[AnswerEvidenceDraft],
+        citations: list[CitationDraft],
+    ) -> AnswerRunRecord: ...
+
+    async def get_answer_run(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        answer_run_id: uuid.UUID,
+    ) -> AnswerRunRecord | None: ...
 
 
 class Transaction(Protocol):

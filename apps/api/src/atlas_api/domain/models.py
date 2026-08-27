@@ -101,6 +101,17 @@ class ChunkEmbeddingStatus(StrEnum):
     FAILED = "failed"
 
 
+class AnswerRunStatus(StrEnum):
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    REFUSED = "refused"
+
+
+class CitationValidationStatus(StrEnum):
+    VERIFIED = "verified"
+    REJECTED = "rejected"
+
+
 @dataclass(frozen=True, slots=True)
 class IdentityClaims:
     issuer: str

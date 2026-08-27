@@ -595,6 +595,32 @@ async def test_semantic_search_returns_authorized_evidence(
     assert {item["retrieval_stage"] for item in hybrid_payload["items"]} == {"hybrid"}
     assert any(item["rrf_score"] is not None for item in hybrid_payload["items"])
 
+    answer = await client.post(
+        f"/v1/workspaces/{workspace_id}/answers",
+        headers=alice_headers,
+        json={
+            "query": "How are invoices handled for finance review?",
+            "retrieval_mode": "hybrid",
+            "top_k": 5,
+        },
+    )
+    assert answer.status_code == 200, answer.text
+    answer_payload = answer.json()
+    assert answer_payload["status"] == "succeeded"
+    assert answer_payload["grounding_status"] == "citation_verified"
+    assert answer_payload["generation_provider"] == "deterministic-local"
+    assert answer_payload["total_cost_usd"] == 0
+    assert "[1]" in answer_payload["answer_text"]
+    assert answer_payload["citations"][0]["status"] == "verified"
+    assert answer_payload["citations"][0]["quote"] in answer_payload["evidence"][0]["quote"]
+
+    stored_answer = await client.get(
+        f"/v1/workspaces/{workspace_id}/answer-runs/{answer_payload['id']}",
+        headers=alice_headers,
+    )
+    assert stored_answer.status_code == 200, stored_answer.text
+    assert stored_answer.json()["id"] == answer_payload["id"]
+
     special_chars = await client.post(
         f"/v1/workspaces/{workspace_id}/search",
         headers=alice_headers,
@@ -624,6 +650,13 @@ async def test_semantic_search_returns_authorized_evidence(
         json={"query": "worker retry crash recovery", "mode": "hybrid", "top_k": 3},
     )
     assert cross_tenant_hybrid.status_code == 404
+
+    cross_tenant_answer = await client.post(
+        f"/v1/workspaces/{workspace_id}/answers",
+        headers=bob_headers,
+        json={"query": "How are invoices handled?", "retrieval_mode": "hybrid", "top_k": 3},
+    )
+    assert cross_tenant_answer.status_code == 404
 
 
 @pytest.mark.asyncio

@@ -8,11 +8,14 @@ from sqlalchemy import text
 
 from atlas_api.api.dependencies import (
     ActorDependency,
+    AnswerServiceDependency,
     DocumentServiceDependency,
     SemanticSearchServiceDependency,
     WorkspaceServiceDependency,
 )
 from atlas_api.api.schemas import (
+    AnswerRequest,
+    AnswerResponse,
     ChunkListResponse,
     ChunkResponse,
     DocumentListResponse,
@@ -443,6 +446,50 @@ async def semantic_search(
         trace_id=request.state.request_id,
         debug=debug if payload.debug else None,
     )
+
+
+@router.post(
+    "/v1/workspaces/{workspace_id}/answers",
+    response_model=AnswerResponse,
+    tags=["answers"],
+)
+async def create_answer(
+    workspace_id: uuid.UUID,
+    payload: AnswerRequest,
+    actor: ActorDependency,
+    service: AnswerServiceDependency,
+) -> AnswerResponse:
+    record = await service.answer(
+        actor=actor,
+        workspace_id=workspace_id,
+        query=payload.query,
+        top_k=payload.top_k,
+        filters=SearchFilter(
+            source_id=payload.filters.source_id,
+            document_id=payload.filters.document_id,
+        ),
+        retrieval_mode=payload.retrieval_mode,
+    )
+    return AnswerResponse.from_record(record)
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/answer-runs/{answer_run_id}",
+    response_model=AnswerResponse,
+    tags=["answers"],
+)
+async def get_answer_run(
+    workspace_id: uuid.UUID,
+    answer_run_id: uuid.UUID,
+    actor: ActorDependency,
+    service: AnswerServiceDependency,
+) -> AnswerResponse:
+    record = await service.get_answer_run(
+        actor=actor,
+        workspace_id=workspace_id,
+        answer_run_id=answer_run_id,
+    )
+    return AnswerResponse.from_record(record)
 
 
 @router.post(

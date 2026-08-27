@@ -56,6 +56,63 @@ export interface SearchResult extends SemanticSearchResult {
   retrieval_config_version: string;
 }
 
+export interface AnswerEvidence {
+  id: string;
+  rank: number;
+  chunk_id: string;
+  document_id: string;
+  document_version_id: string;
+  source_id: string;
+  document_title: string;
+  retrieval_stage: string;
+  retrieval_score: number;
+  semantic_score: number | null;
+  lexical_score: number | null;
+  rrf_score: number | null;
+  quote: string;
+  start_char: number;
+  end_char: number;
+}
+
+export interface Citation {
+  id: string;
+  marker: string;
+  evidence_rank: number;
+  answer_evidence_id: string;
+  chunk_id: string;
+  document_id: string;
+  document_version_id: string;
+  quote: string;
+  evidence_start_char: number;
+  evidence_end_char: number;
+  answer_start_char: number;
+  answer_end_char: number;
+  status: string;
+}
+
+export interface AnswerResult {
+  id: string;
+  workspace_id: string;
+  status: string;
+  query: string;
+  answer_text: string;
+  retrieval_mode: SearchMode;
+  retrieval_config_version: string;
+  generation_provider: string;
+  generation_model: string;
+  generation_model_version: string;
+  prompt_version: string;
+  grounding_status: string;
+  warnings: string[];
+  input_tokens: number;
+  output_tokens: number;
+  total_cost_usd: number;
+  latency_ms: number;
+  evidence: AnswerEvidence[];
+  citations: Citation[];
+  created_at: string;
+}
+
 interface ApiErrorPayload {
   error?: { code?: string; message?: string; request_id?: string };
 }
@@ -171,5 +228,16 @@ export async function searchEvidence(
   return apiRequest<SearchResult>(`/v1/workspaces/${workspaceId}/search`, {
     method: "POST",
     body: JSON.stringify({ query, mode, top_k: 5, debug: true }),
+  });
+}
+
+export async function answerQuestion(
+  workspaceId: string,
+  query: string,
+  retrievalMode: SearchMode,
+): Promise<AnswerResult> {
+  return apiRequest<AnswerResult>(`/v1/workspaces/${workspaceId}/answers`, {
+    method: "POST",
+    body: JSON.stringify({ query, retrieval_mode: retrievalMode, top_k: 5 }),
   });
 }

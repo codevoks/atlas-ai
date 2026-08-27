@@ -299,6 +299,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workspaces/{workspace_id}/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Answer */
+        post: operations["create_answer_v1_workspaces__workspace_id__answers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workspaces/{workspace_id}/answer-runs/{answer_run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Answer Run */
+        get: operations["get_answer_run_v1_workspaces__workspace_id__answer_runs__answer_run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workspaces/{workspace_id}/embeddings/backfill": {
         parameters: {
             query?: never;
@@ -371,6 +405,117 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AnswerEvidenceResponse */
+        AnswerEvidenceResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Rank */
+            rank: number;
+            /**
+             * Chunk Id
+             * Format: uuid
+             */
+            chunk_id: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /**
+             * Document Version Id
+             * Format: uuid
+             */
+            document_version_id: string;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Document Title */
+            document_title: string;
+            /** Retrieval Stage */
+            retrieval_stage: string;
+            /** Retrieval Score */
+            retrieval_score: number;
+            /** Semantic Score */
+            semantic_score: number | null;
+            /** Lexical Score */
+            lexical_score: number | null;
+            /** Rrf Score */
+            rrf_score: number | null;
+            /** Quote */
+            quote: string;
+            /** Start Char */
+            start_char: number;
+            /** End Char */
+            end_char: number;
+        };
+        /** AnswerRequest */
+        AnswerRequest: {
+            /** Query */
+            query: string;
+            /**
+             * Retrieval Mode
+             * @default hybrid
+             * @enum {string}
+             */
+            retrieval_mode: "semantic" | "lexical" | "hybrid";
+            /** Top K */
+            top_k?: number | null;
+            filters?: components["schemas"]["SemanticSearchFilters"];
+        };
+        /** AnswerResponse */
+        AnswerResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /** Status */
+            status: string;
+            /** Query */
+            query: string;
+            /** Answer Text */
+            answer_text: string;
+            /** Retrieval Mode */
+            retrieval_mode: string;
+            /** Retrieval Config Version */
+            retrieval_config_version: string;
+            /** Generation Provider */
+            generation_provider: string;
+            /** Generation Model */
+            generation_model: string;
+            /** Generation Model Version */
+            generation_model_version: string;
+            /** Prompt Version */
+            prompt_version: string;
+            /** Grounding Status */
+            grounding_status: string;
+            /** Warnings */
+            warnings: string[];
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Total Cost Usd */
+            total_cost_usd: number;
+            /** Latency Ms */
+            latency_ms: number;
+            /** Evidence */
+            evidence: components["schemas"]["AnswerEvidenceResponse"][];
+            /** Citations */
+            citations: components["schemas"]["CitationResponse"][];
+            /** Created At */
+            created_at: string;
+        };
         /** ChunkListResponse */
         ChunkListResponse: {
             /** Items */
@@ -417,6 +562,50 @@ export interface components {
             };
             /** Created At */
             created_at: string;
+        };
+        /** CitationResponse */
+        CitationResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Marker */
+            marker: string;
+            /** Evidence Rank */
+            evidence_rank: number;
+            /**
+             * Answer Evidence Id
+             * Format: uuid
+             */
+            answer_evidence_id: string;
+            /**
+             * Chunk Id
+             * Format: uuid
+             */
+            chunk_id: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /**
+             * Document Version Id
+             * Format: uuid
+             */
+            document_version_id: string;
+            /** Quote */
+            quote: string;
+            /** Evidence Start Char */
+            evidence_start_char: number;
+            /** Evidence End Char */
+            evidence_end_char: number;
+            /** Answer Start Char */
+            answer_start_char: number;
+            /** Answer End Char */
+            answer_end_char: number;
+            /** Status */
+            status: string;
         };
         /** DocumentListResponse */
         DocumentListResponse: {
@@ -1658,6 +1847,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SemanticSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_answer_v1_workspaces__workspace_id__answers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnswerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnswerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_answer_run_v1_workspaces__workspace_id__answer_runs__answer_run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                answer_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnswerResponse"];
                 };
             };
             /** @description Validation Error */

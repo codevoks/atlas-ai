@@ -261,6 +261,58 @@ flowchart LR
 
 Hybrid retrieval keeps lexical and semantic candidate generation as separate ranked lists, then fuses ranks with RRF rather than mixing raw branch scores. This makes exact-term/entity matches and semantic paraphrase matches visible through one deterministic evidence API while preserving branch provenance for debugging.
 
+## 1E. Phase 6 grounded answer and citation validation flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant W as Next.js web/BFF
+    participant A as FastAPI answer orchestrator
+    participant R as Hybrid retrieval
+    participant C as Context builder
+    participant G as Deterministic generator
+    participant V as Citation validator
+    participant D as PostgreSQL
+
+    U->>W: Ask question in workspace
+    W->>A: POST /v1/workspaces/{id}/answers
+    A->>D: Resolve active membership and document:read permission
+    A->>R: Retrieve semantic/lexical/hybrid candidates with tenant filters
+    R-->>A: Typed evidence with chunk/version identity
+    A->>C: Build bounded context from untrusted evidence
+    C-->>A: Context package and warnings
+    A->>G: Generate structured answer from evidence only
+    G-->>A: Answer text plus citation drafts
+    A->>V: Validate markers, evidence IDs, quotes, and spans
+    V-->>A: Verified citations or fail-closed error
+    A->>D: Persist answer run, frozen evidence, citations, provenance
+    A-->>W: Grounded answer with verified citations
+```
+
+```mermaid
+flowchart LR
+    Evidence[Retrieved evidence\nuntrusted text]
+    Context[Budgeted context\nranked excerpts]
+    Generator[Deterministic local generator\nno network or tools]
+    Draft[Structured answer\ncitation drafts]
+    Validator[Citation validator\nallowlist + quote/span checks]
+    Refusal[No-evidence refusal]
+    Store[(PostgreSQL\nanswer_runs answer_evidence citations)]
+    UI[Answer UI\nverified citations and provenance]
+
+    Evidence --> Context
+    Context -->|no evidence| Refusal
+    Context -->|evidence available| Generator
+    Generator --> Draft
+    Draft --> Validator
+    Validator -->|verified| Store
+    Refusal --> Store
+    Store --> UI
+```
+
+Phase 6 proves the answer/citation integrity boundary before introducing hosted LLMs, streaming, tools, or agentic workflows. Prompts remain implementation details; authorization and citation truth come from typed evidence and persisted validation.
+
 ## 2. Durable ingestion and atomic publication
 
 ```mermaid

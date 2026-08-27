@@ -16,6 +16,7 @@ import {
 import { SubmitButton } from "@/components/submit-button";
 import {
   AtlasApiError,
+  answerQuestion,
   getDocumentChunks,
   getDocumentVersions,
   getDocuments,
@@ -30,12 +31,18 @@ import {
 
 interface WorkspacePageProps {
   params: Promise<{ workspaceId: string }>;
-  searchParams: Promise<{ error?: string; semanticQuery?: string; searchMode?: string }>;
+  searchParams: Promise<{
+    answerMode?: string;
+    answerQuery?: string;
+    error?: string;
+    semanticQuery?: string;
+    searchMode?: string;
+  }>;
 }
 
 export default async function WorkspacePage({ params, searchParams }: WorkspacePageProps) {
   const { workspaceId } = await params;
-  const { error, semanticQuery, searchMode } = await searchParams;
+  const { answerMode, answerQuery, error, semanticQuery, searchMode } = await searchParams;
   let me;
   let workspace;
   let members;
@@ -91,6 +98,14 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
   const semanticResults = cleanSemanticQuery
     ? await searchEvidence(workspaceId, cleanSemanticQuery, selectedSearchMode)
     : null;
+  const cleanAnswerQuery = answerQuery ? answerQuery.split(/\s+/).join(" ").slice(0, 4000) : "";
+  const selectedAnswerMode: SearchMode =
+    answerMode === "semantic" || answerMode === "lexical" || answerMode === "hybrid"
+      ? answerMode
+      : "hybrid";
+  const answerResult = cleanAnswerQuery
+    ? await answerQuestion(workspaceId, cleanAnswerQuery, selectedAnswerMode)
+    : null;
 
   return (
     <main className="app-shell">
@@ -113,6 +128,77 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
           ) : null}
         </div>
         {error ? <p className="alert" role="alert">{error}</p> : null}
+
+        <section className="search-panel">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Grounded answer</p>
+              <h2>Ask with verified citations</h2>
+            </div>
+            {answerResult ? <span className="count">{answerResult.citations.length}</span> : null}
+          </div>
+          <form className="search-form" method="get">
+            <label className="sr-only" htmlFor="answer-query">Answer query</label>
+            <input
+              id="answer-query"
+              name="answerQuery"
+              maxLength={4000}
+              defaultValue={cleanAnswerQuery}
+              placeholder="Ask a question that should be answered from evidence..."
+            />
+            <label className="sr-only" htmlFor="answer-mode">Answer retrieval mode</label>
+            <select id="answer-mode" name="answerMode" defaultValue={selectedAnswerMode}>
+              <option value="hybrid">Hybrid</option>
+              <option value="lexical">Lexical</option>
+              <option value="semantic">Semantic</option>
+            </select>
+            <button className="button primary" type="submit">Generate answer</button>
+          </form>
+          {answerResult ? (
+            <div className="search-results">
+              <p className="muted">
+                {answerResult.status} · {answerResult.grounding_status} ·{" "}
+                {answerResult.generation_model}@{answerResult.generation_model_version} · $
+                {answerResult.total_cost_usd.toFixed(2)}
+              </p>
+              <article className="search-result">
+                <div>
+                  <strong>Answer</strong>
+                  <small>
+                    input {answerResult.input_tokens} · output {answerResult.output_tokens} ·{" "}
+                    {answerResult.latency_ms}ms
+                  </small>
+                </div>
+                <p>{answerResult.answer_text}</p>
+                <small className="mono">
+                  run {answerResult.id} · prompt {answerResult.prompt_version}
+                </small>
+              </article>
+              {answerResult.citations.map((citation) => (
+                <article className="search-result" key={citation.id}>
+                  <div>
+                    <strong>
+                      Citation {citation.marker} · {citation.status}
+                    </strong>
+                    <small>evidence rank {citation.evidence_rank}</small>
+                  </div>
+                  <p>“{citation.quote}”</p>
+                  <small className="mono">
+                    chunk {citation.chunk_id} · span {citation.evidence_start_char}–
+                    {citation.evidence_end_char}
+                  </small>
+                </article>
+              ))}
+              {answerResult.warnings.length > 0 ? (
+                <p className="alert">Warnings: {answerResult.warnings.join(", ")}</p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="muted">
+              Ask a question and Atlas will answer only from retrieved workspace evidence.
+            </p>
+          )}
+        </section>
 
         <section className="search-panel">
           <div className="section-heading">

@@ -6,6 +6,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from atlas_api.application.ports import (
+    AnswerEvidenceRecord,
+    AnswerRunRecord,
     ChunkRecord,
     DocumentRecord,
     DocumentVersionRecord,
@@ -15,6 +17,7 @@ from atlas_api.application.ports import (
     SearchCandidate,
     SourceRecord,
     UploadIntentRecord,
+    ValidatedCitationRecord,
     WorkspaceRecord,
 )
 from atlas_api.domain.models import (
@@ -441,6 +444,133 @@ class SearchResponse(BaseModel):
     items: list[EvidenceResponse]
     trace_id: str
     debug: dict[str, object] | None = None
+
+
+class AnswerRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=4_000)
+    retrieval_mode: Literal["semantic", "lexical", "hybrid"] = "hybrid"
+    top_k: int | None = Field(default=None, ge=1, le=20)
+    filters: SemanticSearchFilters = Field(default_factory=SemanticSearchFilters)
+
+
+class AnswerEvidenceResponse(BaseModel):
+    id: uuid.UUID
+    rank: int
+    chunk_id: uuid.UUID
+    document_id: uuid.UUID
+    document_version_id: uuid.UUID
+    source_id: uuid.UUID
+    document_title: str
+    retrieval_stage: str
+    retrieval_score: float
+    semantic_score: float | None
+    lexical_score: float | None
+    rrf_score: float | None
+    quote: str
+    start_char: int
+    end_char: int
+
+    @classmethod
+    def from_record(cls, record: AnswerEvidenceRecord) -> AnswerEvidenceResponse:
+        return cls(
+            id=record.id,
+            rank=record.rank,
+            chunk_id=record.chunk_id,
+            document_id=record.document_id,
+            document_version_id=record.document_version_id,
+            source_id=record.source_id,
+            document_title=record.document_title,
+            retrieval_stage=record.retrieval_stage,
+            retrieval_score=record.retrieval_score,
+            semantic_score=record.semantic_score,
+            lexical_score=record.lexical_score,
+            rrf_score=record.rrf_score,
+            quote=record.quote,
+            start_char=record.start_char,
+            end_char=record.end_char,
+        )
+
+
+class CitationResponse(BaseModel):
+    id: uuid.UUID
+    marker: str
+    evidence_rank: int
+    answer_evidence_id: uuid.UUID
+    chunk_id: uuid.UUID
+    document_id: uuid.UUID
+    document_version_id: uuid.UUID
+    quote: str
+    evidence_start_char: int
+    evidence_end_char: int
+    answer_start_char: int
+    answer_end_char: int
+    status: str
+
+    @classmethod
+    def from_record(cls, record: ValidatedCitationRecord) -> CitationResponse:
+        return cls(
+            id=record.id,
+            marker=record.marker,
+            evidence_rank=record.evidence_rank,
+            answer_evidence_id=record.answer_evidence_id,
+            chunk_id=record.chunk_id,
+            document_id=record.document_id,
+            document_version_id=record.document_version_id,
+            quote=record.quote,
+            evidence_start_char=record.evidence_start_char,
+            evidence_end_char=record.evidence_end_char,
+            answer_start_char=record.answer_start_char,
+            answer_end_char=record.answer_end_char,
+            status=record.status.value,
+        )
+
+
+class AnswerResponse(BaseModel):
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    status: str
+    query: str
+    answer_text: str
+    retrieval_mode: str
+    retrieval_config_version: str
+    generation_provider: str
+    generation_model: str
+    generation_model_version: str
+    prompt_version: str
+    grounding_status: str
+    warnings: list[str]
+    input_tokens: int
+    output_tokens: int
+    total_cost_usd: float
+    latency_ms: int
+    evidence: list[AnswerEvidenceResponse]
+    citations: list[CitationResponse]
+    created_at: str
+
+    @classmethod
+    def from_record(cls, record: AnswerRunRecord) -> AnswerResponse:
+        return cls(
+            id=record.id,
+            workspace_id=record.workspace_id,
+            status=record.status.value,
+            query=record.query,
+            answer_text=record.answer_text,
+            retrieval_mode=record.retrieval_mode,
+            retrieval_config_version=record.retrieval_config_version,
+            generation_provider=record.generation_provider,
+            generation_model=record.generation_model,
+            generation_model_version=record.generation_model_version,
+            prompt_version=record.prompt_version,
+            grounding_status=record.grounding_status,
+            warnings=record.warnings,
+            input_tokens=record.input_tokens,
+            output_tokens=record.output_tokens,
+            total_cost_usd=record.total_cost_usd,
+            latency_ms=record.latency_ms,
+            evidence=[AnswerEvidenceResponse.from_record(item) for item in record.evidence],
+            citations=[CitationResponse.from_record(item) for item in record.citations],
+            created_at=record.created_at.isoformat(),
+        )
 
 
 class SemanticSearchResponse(BaseModel):

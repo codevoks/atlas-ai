@@ -8,6 +8,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -409,3 +410,115 @@ class ChunkEmbeddingModel(TimestampMixin, Base):
     token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class AnswerRunModel(TimestampMixin, Base):
+    __tablename__ = "answer_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('succeeded','failed','refused')",
+            name="valid_answer_run_status",
+        ),
+        CheckConstraint("input_tokens >= 0", name="valid_answer_input_tokens"),
+        CheckConstraint("output_tokens >= 0", name="valid_answer_output_tokens"),
+        CheckConstraint("total_cost_usd >= 0", name="valid_answer_cost"),
+        Index("ix_answer_runs_workspace_created", "workspace_id", "created_at"),
+        Index("ix_answer_runs_workspace_status", "workspace_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    query_text: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    answer_text: Mapped[str] = mapped_column(Text, nullable=False)
+    retrieval_mode: Mapped[str] = mapped_column(String(30), nullable=False)
+    retrieval_config_version: Mapped[str] = mapped_column(String(120), nullable=False)
+    generation_provider: Mapped[str] = mapped_column(String(80), nullable=False)
+    generation_model: Mapped[str] = mapped_column(String(160), nullable=False)
+    generation_model_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(120), nullable=False)
+    grounding_status: Mapped[str] = mapped_column(String(50), nullable=False)
+    warnings: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    context_config: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class AnswerEvidenceModel(Base):
+    __tablename__ = "answer_evidence"
+    __table_args__ = (
+        UniqueConstraint("answer_run_id", "rank", name="uq_answer_evidence_run_rank"),
+        Index("ix_answer_evidence_workspace_run", "workspace_id", "answer_run_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    answer_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("answer_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    chunk_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("chunks.id", ondelete="RESTRICT"), nullable=False
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="RESTRICT"), nullable=False
+    )
+    document_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("document_versions.id", ondelete="RESTRICT"), nullable=False
+    )
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sources.id", ondelete="RESTRICT"), nullable=False
+    )
+    rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    document_title: Mapped[str] = mapped_column(String(255), nullable=False)
+    retrieval_stage: Mapped[str] = mapped_column(String(30), nullable=False)
+    retrieval_score: Mapped[float] = mapped_column(nullable=False)
+    semantic_score: Mapped[float | None] = mapped_column(nullable=True)
+    lexical_score: Mapped[float | None] = mapped_column(nullable=True)
+    rrf_score: Mapped[float | None] = mapped_column(nullable=True)
+    quote: Mapped[str] = mapped_column(Text, nullable=False)
+    start_char: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_char: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class CitationModel(Base):
+    __tablename__ = "citations"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('verified','rejected')",
+            name="valid_citation_status",
+        ),
+        Index("ix_citations_workspace_run", "workspace_id", "answer_run_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    answer_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("answer_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    answer_evidence_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("answer_evidence.id", ondelete="CASCADE"), nullable=False
+    )
+    marker: Mapped[str] = mapped_column(String(20), nullable=False)
+    answer_start_char: Mapped[int] = mapped_column(Integer, nullable=False)
+    answer_end_char: Mapped[int] = mapped_column(Integer, nullable=False)
+    evidence_start_char: Mapped[int] = mapped_column(Integer, nullable=False)
+    evidence_end_char: Mapped[int] = mapped_column(Integer, nullable=False)
+    quote: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

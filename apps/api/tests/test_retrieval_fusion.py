@@ -25,6 +25,7 @@ def candidate(
         start_char=0,
         end_char=10,
         snippet="Evidence snippet",
+        text="Evidence snippet",
         distance=1.0 - score,
         score=score,
         retrieval_stage=stage,

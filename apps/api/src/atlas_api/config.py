@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     hybrid_search_rrf_k: int = 60
     hybrid_search_candidate_multiplier: int = 4
     retrieval_config_version: str = "phase5-postgres-fts-rrf-v1"
+    answer_provider: Literal["deterministic-local"] = "deterministic-local"
+    answer_model: str = "atlas-local-grounded-generator"
+    answer_model_version: str = "2026-08-28"
+    answer_prompt_version: str = "phase6-grounded-answer-v1"
+    answer_max_context_items: int = 5
+    answer_max_context_chars: int = 2_400
+    answer_max_output_chars: int = 1_200
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -88,6 +95,18 @@ class Settings(BaseSettings):
             raise ValueError("HYBRID_SEARCH_CANDIDATE_MULTIPLIER must be positive")
         if not self.retrieval_config_version.strip():
             raise ValueError("RETRIEVAL_CONFIG_VERSION must not be empty")
+        if not self.answer_model.strip():
+            raise ValueError("ANSWER_MODEL must not be empty")
+        if not self.answer_model_version.strip():
+            raise ValueError("ANSWER_MODEL_VERSION must not be empty")
+        if not self.answer_prompt_version.strip():
+            raise ValueError("ANSWER_PROMPT_VERSION must not be empty")
+        if self.answer_max_context_items < 1:
+            raise ValueError("ANSWER_MAX_CONTEXT_ITEMS must be positive")
+        if self.answer_max_context_chars < 200:
+            raise ValueError("ANSWER_MAX_CONTEXT_CHARS must be at least 200")
+        if self.answer_max_output_chars < 200:
+            raise ValueError("ANSWER_MAX_OUTPUT_CHARS must be at least 200")
         return self
 
 
