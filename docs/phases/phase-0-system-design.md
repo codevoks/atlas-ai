@@ -4,7 +4,7 @@
 
 Produce and review the complete pre-implementation design: `docs/architecture.md`, `docs/decisions.md`, `docs/threat-model.md`, `docs/roadmap.md`, all later phase contracts, and this repository guidance. No application scaffold, runtime dependency, database, infrastructure, or production code belongs in Phase 0.
 
-Product assumptions to validate later: Atlas begins as a workspace-scoped SaaS; users upload supported documents; workspace members search and ask grounded questions; admins manage sources/members; ingestion and research are asynchronous where work exceeds request latency; initial visibility is workspace-wide with role-gated administration; a single region and one baseline model provider per capability are adequate before production requirements say otherwise.
+Product assumptions to validate later: Atlas begins as a workspace-scoped SaaS; users upload supported documents; workspace members search and ask grounded questions; admins manage sources/members; ingestion and research are asynchronous where work exceeds request latency; initial visibility is workspace-wide with role-gated administration; a zero-cost local path is mandatory; external model/cloud/provider integrations are optional and opt-in before production requirements say otherwise.
 
 Functional requirements:
 
@@ -33,7 +33,7 @@ Define resource boundaries and conceptual ports before framework code: identity/
 
 ## Security requirements
 
-Complete asset/actor/boundary analysis; define server-derived tenant context; classify uploads, retrieval, model/tool output as untrusted; require least privilege, tenant-scoped storage and telemetry, provider secret/data handling, cost/abuse controls, safe logging, secure deletion, and phase-local negative tests. Residual risks and deferred controls must be explicit. See `docs/threat-model.md`.
+Complete asset/actor/boundary analysis; define server-derived tenant context; classify uploads, retrieval, model/tool output as untrusted; require least privilege, tenant-scoped storage and telemetry, provider secret/data handling, zero-cost default validation, cost/abuse controls, safe logging, secure deletion, and phase-local negative tests. Residual risks and deferred controls must be explicit. See `docs/threat-model.md`.
 
 ## Failure scenarios
 
@@ -61,7 +61,7 @@ Explain why ingestion is asynchronous; why blobs are outside PostgreSQL; why pgv
 
 ## Explicit deferrals
 
-All production implementation is deferred. Numeric SLOs, model/provider selection, chunk parameters, index tuning, queue transport, RLS adoption, OpenSearch, advanced RAG, agent topology, AWS sizing, and multi-region design require later phase requirements or benchmark evidence. Do not create scaffolding “to save time.”
+All production implementation is deferred. Numeric SLOs, paid model/provider selection, chunk parameters, index tuning, queue transport, RLS adoption, OpenSearch, advanced RAG, agent topology, AWS sizing, and multi-region design require later phase requirements, benchmark evidence, and explicit approval before any billable execution. Do not create scaffolding “to save time.”
 
 ## Gate
 

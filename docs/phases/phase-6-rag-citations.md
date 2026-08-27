@@ -10,7 +10,7 @@ Cross-encoder/LLM reranking, candidate depth, context budgets, dedup/diversity, 
 
 ## Architecture changes and modules
 
-Add reranker adapter, context builder, prompt/config registry, generator adapter, answer orchestrator, output policy/schema validator, citation validator, answer-run repository, and safe renderer. Retrieval and generation remain separable so each can be evaluated independently.
+Add reranker adapter, context builder, prompt/config registry, generator adapter with deterministic local fake as the default test/demo implementation, answer orchestrator, output policy/schema validator, citation validator, answer-run repository, and safe renderer. Retrieval and generation remain separable so each can be evaluated independently.
 
 ## Data model changes
 
@@ -26,7 +26,7 @@ Add `answer_runs`, `answer_evidence`, `citations` with workspace/user, query/con
 
 ## Security requirements
 
-Retrieved text explicitly untrusted; context minimization; no secrets/tools in basic RAG; schema and size enforcement; malicious instruction canaries; citation allowlist/span verification; safe Markdown/URL rendering; provider privacy settings; rate/token/cost limits; authorization rechecked before evidence use; sensitive output policy; content-off telemetry default.
+Retrieved text explicitly untrusted; context minimization; no secrets/tools in basic RAG; schema and size enforcement; malicious instruction canaries; citation allowlist/span verification; safe Markdown/URL rendering; provider privacy settings for any external provider; rate/token/cost limits; authorization rechecked before evidence use; sensitive output policy; content-off telemetry default. Paid generation/reranking APIs and large local model downloads are not required for tests or demos.
 
 ## Failure scenarios
 
@@ -34,11 +34,11 @@ Reranker timeout or reordered wrong IDs; context exceeds budget; contradictory s
 
 ## Testing strategy
 
-Deterministic adapters and golden context ordering; token-budget/property tests; citation ID/span mutation tests; prompt-injection fixtures; malformed/oversized model output; provider timeout/fallback; cross-tenant evidence attempts; rendering XSS tests; groundedness/faithfulness sample review; latency/cost instrumentation assertions; end-to-end answer with source opening.
+Deterministic adapters and golden context ordering; token-budget/property tests; citation ID/span mutation tests; prompt-injection fixtures; malformed/oversized model output; provider timeout/fallback; cross-tenant evidence attempts; rendering XSS tests; groundedness/faithfulness sample review; latency/cost instrumentation assertions; zero-cost end-to-end answer with source opening.
 
 ## Acceptance criteria
 
-Every displayed citation resolves to the exact authorized immutable source span; invalid citations are removed/flagged and never represented as verified; answer provenance is reproducible; provider failures degrade safely; retrieval can be tested without generation; the baseline report records quality/latency/cost.
+Every displayed citation resolves to the exact authorized immutable source span; invalid citations are removed/flagged and never represented as verified; answer provenance is reproducible; provider failures degrade safely; retrieval can be tested without generation; the baseline report records quality/latency/cost from deterministic local execution.
 
 ## Engineering review focus and implementation drills
 

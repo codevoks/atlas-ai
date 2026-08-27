@@ -17,9 +17,10 @@
 | LangGraph/tools/state/checkpoints/termination/HITL/agentic RAG | Phase 9 |
 | Multi-agent patterns and reasons not to implement | Phase 9 design review; runtime evidence gate |
 | Deterministic/model-assisted guardrails/adversarial tests | Every phase and Phase 10 |
-| OpenAI/Anthropic/Bedrock-capable abstractions | Decisions and Phases 4/6/9; one provider initially |
-| Langfuse/OpenTelemetry | Schemas/provenance early, integration Phase 11 |
+| Zero-cost build/test/demo path, deterministic provider fakes, opt-in billable integrations | Permanent rules, decisions, every phase gate |
+| OpenAI/Anthropic/Bedrock-capable abstractions | Decisions and Phases 4/6/9; deterministic local fakes required, external providers opt-in |
+| Langfuse/OpenTelemetry | Schemas/provenance early, local/no-export defaults, optional sink integration Phase 11 |
 | OpenSearch comparison | Phase 11 evidence gate |
-| Docker/AWS/Terraform/GitHub Actions/load/DR/production hardening | Phase 11 |
+| Docker/AWS/Terraform/GitHub Actions/load/DR/production hardening | Phase 11; cloud provisioning opt-in only |
 | Clean code, focused resource use, product gates | Permanent rules and every phase |
 | Public repository professionalism and private-material exclusion | Permanent rules, `.gitignore`, and phase gate Git-safety checks |

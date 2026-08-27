@@ -10,7 +10,7 @@ Embedding spaces, dimensions, normalization, cosine/dot/L2 distance, exact versu
 
 ## Architecture changes and modules
 
-Add embedding provider port/adapter, batch planner, rate/concurrency controller, embedding ingestion stage, embedding-set registry, semantic repository/retriever, index-management and backfill jobs. Search remains in the API query plane; heavy embedding work stays in workers.
+Add embedding provider port/adapter with deterministic local fake as the default test/demo implementation, batch planner, rate/concurrency controller, embedding ingestion stage, embedding-set registry, semantic repository/retriever, index-management and backfill jobs. Search remains in the API query plane; heavy embedding work stays in workers.
 
 ## Data model changes
 
@@ -26,7 +26,7 @@ Add `embedding_sets` (provider/model/version/dimension/normalization/config/stat
 
 ## Security requirements
 
-Tenant/published/visibility filters execute inside the vector query, not after top-k; query length/metadata schemas and `k` are bounded; provider data-retention policy documented; secrets isolated; sensitive text minimized; embedding inversion/linkability treated as risk; debug/raw vector endpoints privileged; per-tenant embedding/query budgets and redacted telemetry.
+Tenant/published/visibility filters execute inside the vector query, not after top-k; query length/metadata schemas and `k` are bounded; provider data-retention policy documented for any external provider; secrets isolated; sensitive text minimized; embedding inversion/linkability treated as risk; debug/raw vector endpoints privileged; per-tenant embedding/query budgets and redacted telemetry. Paid embedding APIs and large local model downloads are not required for the product gate.
 
 ## Failure scenarios
 
@@ -34,11 +34,11 @@ Partial provider batch; throttling/timeouts; wrong dimension/model response; dup
 
 ## Testing strategy
 
-Adapter contract tests with deterministic fake; batching/idempotency/partial-failure tests; vector dimension/normalization tests; tenant/filter leakage tests; exact cosine implementation oracle; small labeled recall@k baseline; EXPLAIN/query-plan and latency checks at scenario sizes; dual-set migration/rollback test; live provider only budgeted smoke.
+Adapter contract tests with deterministic fake; batching/idempotency/partial-failure tests; vector dimension/normalization tests; tenant/filter leakage tests; exact cosine implementation oracle; small labeled recall@k baseline; EXPLAIN/query-plan and latency checks at scenario sizes; dual-set migration/rollback test. Live provider checks are optional smoke tests only after explicit approval.
 
 ## Acceptance criteria
 
-Published chunks have complete versioned embeddings; semantic results are authorized typed evidence; exact and ANN behavior can be compared; an interrupted embedding migration is resumable and reversible; baseline recall/latency/cost is recorded.
+Published chunks have complete versioned embeddings; semantic results are authorized typed evidence; exact and ANN behavior can be compared; an interrupted embedding migration is resumable and reversible; baseline recall/latency/cost is recorded from the zero-cost deterministic path.
 
 ## Engineering review focus and implementation drills
 
@@ -50,4 +50,4 @@ Explain model/dimension choice, vector storage estimates, exact versus ANN, inde
 
 ## Explicit deferrals
 
-No lexical/hybrid/reranking/generation. Exact production model, HNSW/IVF choice/parameters, compression, dedicated vector DB, and OpenSearch await corpus/load evidence. Do not tune against anecdotes.
+No lexical/hybrid/reranking/generation. Exact production model, paid provider adoption, HNSW/IVF choice/parameters, compression, dedicated vector DB, and OpenSearch await corpus/load evidence and explicit opt-in for any billable execution. Do not tune against anecdotes.

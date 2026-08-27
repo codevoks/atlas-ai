@@ -24,7 +24,13 @@ Implemented:
 
 Deferred:
 
-- production S3-compatible storage, malware scanning, parsing, chunking, embeddings, retrieval, RAG, evaluation, agents, production cloud, billing, SAML/SCIM, and fine-grained document ACLs
+- optional production S3-compatible storage, malware scanning, parsing, chunking, embeddings, retrieval, RAG, evaluation, agents, production cloud, billing, SAML/SCIM, and fine-grained document ACLs
+
+## Zero-cost local path
+
+Atlas must remain buildable, testable, and demonstrable without paid SaaS, cloud resources, domains, or paid model APIs. The current Phase 2 path uses local Docker/PostgreSQL, deterministic development auth, a filesystem-backed object-store adapter, local API/web/worker services, and deterministic tests.
+
+Future cloud, managed observability, hosted search, and model-provider integrations are optional production adapters. They must be explicitly enabled and must not run or provision billable resources as part of the default setup, tests, or demo.
 
 ## Local setup
 

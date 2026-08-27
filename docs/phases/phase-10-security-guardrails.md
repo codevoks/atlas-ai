@@ -2,7 +2,7 @@
 
 ## Scope
 
-Consolidate the security controls built in Phases 1–9; implement missing deterministic/model-assisted guardrails; adversarially test authentication, tenant isolation, uploads, retrieval poisoning, indirect prompt injection, citation manipulation, tools, outputs, budgets, rate abuse, secrets, logs, and dependency/configuration posture. Produce a residual-risk and incident-response readiness report.
+Consolidate the security controls built in Phases 1–9; implement missing deterministic/model-assisted guardrails; adversarially test authentication, tenant isolation, uploads, retrieval poisoning, indirect prompt injection, citation manipulation, tools, outputs, budgets, rate abuse, secrets, logs, and dependency/configuration posture. Produce a residual-risk and incident-response readiness report. The default security suite must run with deterministic local fixtures/fakes and zero monetary cost.
 
 ## Engineering concepts
 
@@ -26,7 +26,7 @@ No arbitrary “guardrail bypass.” Admin policy/config endpoints require stron
 
 ## Security requirements
 
-Meet every control and test in `docs/threat-model.md`; least privilege IAM/DB/object/tool identities; tenant-filter parity; prompt/data separation; citation/source validation; sanitized rendering; egress restrictions; provider privacy; secret rotation readiness; dependency/SBOM/container scanning; abuse limits; audit access/retention; incident containment. Document controls not possible locally and their production verification.
+Meet every control and test in `docs/threat-model.md`; least privilege IAM/DB/object/tool identities; tenant-filter parity; prompt/data separation; citation/source validation; sanitized rendering; egress restrictions; provider privacy; secret rotation readiness; dependency/SBOM/container scanning; abuse limits; audit access/retention; incident containment. Document controls not possible locally and their production verification, but do not require paid APIs/cloud for the product gate.
 
 ## Failure scenarios
 

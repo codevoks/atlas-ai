@@ -26,10 +26,10 @@ flowchart LR
 
     API -->|signed operations and metadata| Objects[(Object storage\nimmutable source blobs)]
     Worker -->|stream source and artifacts| Objects
-    API -->|typed generation and retrieval calls| Models[External AI providers]
+    API -->|typed generation and retrieval calls| Models[Provider adapters\nlocal fakes by default]
     Worker -->|embedding and model batches| Models
     Worker -->|isolated input| Parser[Parser sandbox\nuntrusted file boundary]
-    API -->|redacted signals| Obs[OpenTelemetry and Langfuse]
+    API -->|redacted signals| Obs[OpenTelemetry\nlocal/no-export default]
     Worker -->|redacted signals| Obs
 
     classDef authority fill:var(--viz-series-1),color:var(--foreground),stroke:var(--border);
@@ -42,7 +42,37 @@ flowchart LR
 
 The database decides tenant, membership, document publication, job, budget, and approval truth. Object storage is authoritative for blob bytes but never authorization. Redis, caches, embeddings, and later search projections must be recoverable from durable state.
 
-## 1A. Phase 1 implemented auth, tenancy, and RBAC slice
+## 1A. Zero-cost default execution path
+
+```mermaid
+flowchart TB
+    Dev[Developer workstation] --> Web[Next.js web]
+    Dev --> API[FastAPI API]
+    Dev --> Worker[Worker]
+
+    Web --> API
+    API --> PG[(Local PostgreSQL)]
+    Worker --> PG
+    API --> FS[(Local filesystem\nobject-store adapter)]
+    Worker --> FS
+    API --> FakeAI[Deterministic provider fakes\nfor embeddings, generation, judges, tools]
+    Worker --> FakeAI
+    API --> LocalOTel[OpenTelemetry SDK\nlocal/no-export default]
+    Worker --> LocalOTel
+
+    FakeAI -. explicit opt-in only .-> PaidAI[Paid/hosted model APIs]
+    FS -. explicit opt-in only .-> CloudStorage[Cloud object storage]
+    LocalOTel -. explicit opt-in only .-> HostedObs[Hosted observability]
+
+    classDef local fill:var(--viz-series-1),color:var(--foreground),stroke:var(--border);
+    classDef optin fill:var(--muted),color:var(--foreground),stroke:var(--border),stroke-dasharray: 4 4;
+    class Web,API,Worker,PG,FS,FakeAI,LocalOTel local;
+    class PaidAI,CloudStorage,HostedObs optin;
+```
+
+The product gate runs through the local path. Optional hosted providers preserve production-grade architecture, but they are disabled by default and require explicit approval before any billable execution.
+
+## 1B. Phase 1 implemented auth, tenancy, and RBAC slice
 
 ```mermaid
 sequenceDiagram

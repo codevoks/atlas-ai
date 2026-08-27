@@ -2,7 +2,7 @@
 
 ## Scope
 
-Create versioned golden datasets, offline evaluation runner, retrieval and answer metrics, Ragas adapters where useful, custom deterministic metrics, LLM-judge experiments with calibration, regression comparisons/gates, and a review workflow for human labels.
+Create versioned golden datasets, offline evaluation runner, retrieval and answer metrics, Ragas adapters where useful, custom deterministic metrics, optional LLM-judge experiments with calibration, regression comparisons/gates, and a review workflow for human labels.
 
 ## Engineering concepts
 
@@ -10,7 +10,7 @@ Ground truth design, relevance grades, Recall/Precision@K, MRR, NDCG, answer cor
 
 ## Architecture changes and modules
 
-Add dataset registry/import/export, evaluator ports, batch runner in worker, metric implementations, judge adapter, experiment comparison/report, and CI-sized deterministic regression subset. Evaluation calls production retrieval/answer interfaces with pinned configuration, not copied logic.
+Add dataset registry/import/export, evaluator ports, batch runner in worker, metric implementations, judge adapter with deterministic local fake by default, experiment comparison/report, and CI-sized deterministic regression subset. Evaluation calls production retrieval/answer interfaces with pinned configuration, not copied logic.
 
 ## Data model changes
 
@@ -26,7 +26,7 @@ Admin/developer endpoints to create/version datasets, launch/cancel runs, inspec
 
 ## Security requirements
 
-Dataset tenant/access isolation; prevent production query ingestion without consent; PII/content redaction; judge prompts treat candidate outputs as untrusted; no expected-answer leakage into system under test; budget/rate limits; blind/randomized review where appropriate; audit baseline changes; protect evaluation from prompt injection and metric gaming.
+Dataset tenant/access isolation; prevent production query ingestion without consent; PII/content redaction; judge prompts treat candidate outputs as untrusted; no expected-answer leakage into system under test; budget/rate limits; blind/randomized review where appropriate; audit baseline changes; protect evaluation from prompt injection and metric gaming. Paid judge/model APIs are opt-in only and not part of the default product gate.
 
 ## Failure scenarios
 
@@ -34,7 +34,7 @@ Missing/ambiguous labels; dataset leakage/overfitting; flaky judge; judge provid
 
 ## Testing strategy
 
-Hand-computed metric oracles; dataset schema/lineage tests; deterministic fake runner; resume/idempotency; judge repeatability/calibration against human labels; leakage checks; slice/aggregation tests; pinned small regression in CI; larger offline run at phase gate; compare retrieval separately from generation.
+Hand-computed metric oracles; dataset schema/lineage tests; deterministic fake runner; resume/idempotency; judge repeatability/calibration against human labels using local fixtures; leakage checks; slice/aggregation tests; pinned small regression in CI; larger offline run at phase gate; compare retrieval separately from generation. Any live judge run requires explicit approval and is not required for completion.
 
 ## Acceptance criteria
 

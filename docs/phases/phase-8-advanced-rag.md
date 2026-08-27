@@ -2,7 +2,7 @@
 
 ## Scope
 
-Use Phase 7 to test query rewriting, multi-query retrieval, decomposition, contextual retrieval/chunk enrichment, diversity, and other selected techniques one at a time. Implement only techniques that improve named slices enough to justify latency, cost, complexity, and new failure modes; ship configuration/rollback and an ablation report.
+Use Phase 7 to test query rewriting, multi-query retrieval, decomposition, contextual retrieval/chunk enrichment, diversity, and other selected techniques one at a time. Implement only techniques that improve named slices enough to justify latency, cost, complexity, and new failure modes; ship configuration/rollback and an ablation report. The default ablation path must use deterministic local execution and require no paid model APIs.
 
 ## Engineering concepts
 
@@ -34,7 +34,7 @@ Rewrite changes intent; decomposition omits constraints; multi-query fan-out amp
 
 ## Testing strategy
 
-Schema/fan-out/dedup unit tests; intent-preservation and adversarial fixtures; deterministic partial-branch tests; offline ablations on overall and slice metrics; paired cost/latency analysis; contextual-citation checks against original spans; rollback and reindex tests; regression gate versus unchanged baseline.
+Schema/fan-out/dedup unit tests; intent-preservation and adversarial fixtures; deterministic partial-branch tests; zero-cost offline ablations on overall and slice metrics; paired cost/latency analysis; contextual-citation checks against original spans; rollback and reindex tests; regression gate versus unchanged baseline.
 
 ## Acceptance criteria
 

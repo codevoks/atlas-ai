@@ -2,7 +2,7 @@
 
 ## Scope
 
-Implement one clearly defined deep-research workflow using LangGraph: plan bounded questions, retrieve Atlas evidence, optionally use a tightly scoped external research tool if product policy permits, synthesize a cited report, checkpoint state, expose progress/cancel/resume, enforce budgets/termination, and require human approval at sensitive boundaries.
+Implement one clearly defined deep-research workflow using LangGraph: plan bounded questions, retrieve Atlas evidence, optionally use a tightly scoped external research tool if product policy permits, synthesize a cited report, checkpoint state, expose progress/cancel/resume, enforce budgets/termination, and require human approval at sensitive boundaries. The default test/demo path uses deterministic local model/tool fakes and no paid APIs.
 
 ## Engineering concepts
 
@@ -26,7 +26,7 @@ Create/get/list/cancel/resume research runs; stream/poll safe progress events; s
 
 ## Security requirements
 
-Allowlisted least-privilege tools; strict input/output schemas; SSRF/egress and redirect controls; tenant auth inside every retrieval/tool node; retrieved/web/tool content is untrusted; no arbitrary code/browser/shell; concurrent-safe budgets; maximum steps/tokens/tool calls/wall time/parallelism; approval for external/destructive/sensitive actions; safe checkpoint/log retention.
+Allowlisted least-privilege tools; strict input/output schemas; SSRF/egress and redirect controls; tenant auth inside every retrieval/tool node; retrieved/web/tool content is untrusted; no arbitrary code/browser/shell; concurrent-safe budgets; maximum steps/tokens/tool calls/wall time/parallelism; approval for external/destructive/sensitive/billable actions; safe checkpoint/log retention.
 
 ## Failure scenarios
 
@@ -34,7 +34,7 @@ Infinite loop; repeated plan; tool timeout/429/malformed/oversized output; check
 
 ## Testing strategy
 
-Graph/node tests with deterministic models/tools; invariant/property tests for step and budget caps; checkpoint crash/resume at each edge; duplicate tool invocation/idempotency; cancellation/approval/revocation races; adversarial tool requests/SSRF; citation provenance; comparative evaluation against deterministic RAG; load/fairness of concurrent runs.
+Graph/node tests with deterministic local models/tools; invariant/property tests for step and budget caps; checkpoint crash/resume at each edge; duplicate tool invocation/idempotency; cancellation/approval/revocation races; adversarial tool requests/SSRF; citation provenance; comparative evaluation against deterministic RAG; load/fairness of concurrent runs. Live external research/model tools are optional and require explicit approval.
 
 ## Acceptance criteria
 

@@ -2,7 +2,7 @@
 
 ## Security objectives
 
-Atlas must prevent cross-tenant access, unauthorized actions, unsafe file processing, secret leakage, prompt/tool authority escalation, citation deception, abuse-driven cost, and silent loss/corruption. Availability and bounded spend are security properties. Model output is never trusted merely because it is structured.
+Atlas must prevent cross-tenant access, unauthorized actions, unsafe file processing, secret leakage, prompt/tool authority escalation, citation deception, abuse-driven cost, and silent loss/corruption. Availability, bounded spend, and a zero-cost default build/test/demo path are security and operability properties. Model output is never trusted merely because it is structured.
 
 ## Assets and actors
 
@@ -24,7 +24,7 @@ Actors: anonymous internet client, authenticated member, workspace admin/owner, 
 | Model → application/user | fabricated citation, unsafe content, schema confusion, UI injection | schema validation, evidence allowlist, citation/span validation, policy validation, safe rendering, refusal/degraded state |
 | Model → tool | arbitrary tool use, confused deputy, SSRF, exfiltration, destructive action | structured allowlisted tools, per-tool auth scopes, URL/network egress policy, argument validation, budgets/timeouts, output sanitization, human approval |
 | Telemetry/export | prompt/document/secret/PII leakage, cross-tenant dashboards | redaction, content-off default, tenant-safe attributes, access controls, retention/deletion policy, sampling, no credentials |
-| Dependencies/CI/CD | supply-chain compromise, secret exposure, artifact tampering | lockfiles, provenance/scanning, minimal permissions, pinned actions, OIDC to cloud, protected environments, signed/scanned images |
+| Dependencies/CI/CD | supply-chain compromise, secret exposure, artifact tampering, accidental billable provisioning | lockfiles, provenance/scanning, minimal permissions, pinned actions, opt-in cloud OIDC only, protected environments, signed/scanned images, no default paid-resource creation |
 
 ## Authorization and tenant isolation model
 
@@ -40,6 +40,7 @@ Initial roles are `owner`, `admin`, `member`, and optionally `viewer`. Permissio
 - Generation receives the least context necessary and no infrastructure/provider credentials.
 - Deterministic validation wraps model-assisted classifiers; model safety decisions alone are insufficient for access control.
 - Research budgets cap steps, parallelism, model tokens, tool calls, wall time, and money. Reservations are concurrency-safe.
+- Default tests and demos use deterministic local provider fakes. Paid model APIs, hosted tools, managed observability, cloud infrastructure, and domains are explicit opt-in only and must not execute or provision during ordinary validation.
 - Sensitive or externally consequential actions require explicit human approval and a fresh authorization check.
 
 ## Security testing matrix
@@ -105,7 +106,7 @@ Implemented controls:
 
 Residual risks and follow-ups:
 
-- The Phase 2 object store is a local filesystem adapter for deterministic development. Production must configure a private S3-compatible bucket, server-side encryption, lifecycle cleanup, and least-privilege service identities behind the same interface.
+- The Phase 2 object store is a local filesystem adapter for deterministic zero-cost development and demonstration. Production may configure a private S3-compatible bucket, server-side encryption, lifecycle cleanup, and least-privilege service identities behind the same interface only through an explicit deployment path.
 - Magic-byte validation, malware scanning, parser sandboxing, archive-bomb controls, extracted text handling, chunking, embeddings, and retrieval authorization are deferred to later ingestion/retrieval phases.
 - Per-tenant upload quotas and rate limits are represented by size limits and permission checks in Phase 2 but still need durable quota ledgers before public exposure.
 - Automated orphan cleanup/reconciliation is designed but not scheduled in Phase 2; implementation belongs with production object-storage lifecycle or a dedicated maintenance worker.

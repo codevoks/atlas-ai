@@ -18,6 +18,7 @@ Core non-functional requirements:
 - All network calls have timeouts; retries are bounded and limited to classified transient failures.
 - Telemetry must correlate user request, job, retrieval, model call, and research run without leaking document content or secrets.
 - Cost, latency, and quality are measured per important AI operation.
+- The repository must remain buildable, testable, and demonstrable at zero monetary cost. Paid cloud, SaaS, domains, and model APIs are optional integrations only and are disabled by default.
 
 ## System context and trust boundaries
 
@@ -30,13 +31,13 @@ FastAPI control/query plane
    |---- PostgreSQL + pgvector (authoritative metadata/index initially)
    |---- Object storage (immutable source artifacts)
    |---- Redis (queue/cache/rate coordination; non-authoritative)
-   |---- Model/embedding/reranking providers (external processors)
+   |---- Model/embedding/reranking provider adapters
    `---- Durable job publication
                   |
               Worker fleet
                   |---- parsers/sandboxed conversion boundary
                   |---- object storage / PostgreSQL / Redis
-                  `---- external AI providers
+                  `---- deterministic local fakes by default; external AI providers only when explicitly enabled
 
 Later, only if evidence justifies it:
 FastAPI/worker ---- OpenSearch (derived lexical/vector search projection)
@@ -54,7 +55,7 @@ Trust boundaries exist at the browser, service ingress, tenant authorization lay
 | PostgreSQL | Tenants, memberships, sources, document versions, jobs, chunks, embeddings initially, evaluations, runs, audit references | Large source blobs, ephemeral locks as the only correctness mechanism |
 | Object storage | Immutable uploaded/raw/derived artifacts with tenant-prefixed keys | Authorization decisions, mutable job state |
 | Redis | Broker/queue coordination, cache, distributed rate/budget primitives | System of record |
-| Provider adapters | Typed embedding/generation/reranking/tool interfaces, timeout/error normalization | Business policy |
+| Provider adapters | Typed embedding/generation/reranking/tool interfaces, deterministic local fakes for tests/demos, timeout/error normalization | Business policy, direct paid external calls by default |
 | Retrieval subsystem | Candidate generation, filters, fusion, reranking, evidence/context assembly | Authorization bypass, free-form provider output |
 | Evaluation subsystem | Versioned datasets/runs/metrics/comparisons | Production decisions without reviewed thresholds |
 | Observability | Structured events, traces, metrics, cost/latency attribution | Raw sensitive document/prompt logging by default |
@@ -67,7 +68,7 @@ The repository currently implements the control-plane foundation plus the storag
 
 The implemented persistent tables are `users`, `workspaces`, `memberships`, `audit_events`, `idempotency_records`, `sources`, `upload_intents`, `documents`, `document_versions`, `ingestion_jobs`, and `job_events`. Local development uses a filesystem-backed object-store adapter with tenant-prefixed keys and HMAC-signed upload URLs; production object storage remains behind the same adapter boundary.
 
-Phase 2 intentionally publishes document metadata only. Parsing, malware scanning, chunking, embeddings, retrieval, generation, evaluations, Redis-backed coordination, and external object-storage credentials remain deferred to later phases.
+Phase 2 intentionally publishes document metadata only. Parsing, malware scanning, chunking, embeddings, retrieval, generation, evaluations, Redis-backed coordination, and external object-storage credentials remain deferred to later phases. The Phase 2 build/test/demo path is zero-cost: local PostgreSQL, local filesystem object storage, deterministic development authentication, and no model-provider or cloud API calls.
 
 ## Canonical data model
 
@@ -161,9 +162,9 @@ At 100×, first separate worker pools and quotas by workload/tenant, add replica
 
 ## Observability and cost
 
-OpenTelemetry provides vendor-neutral traces/metrics/log correlation; Langfuse captures redacted AI traces, evaluation metadata, prompt/model/config lineage, latency, tokens, and cost. Stable IDs connect HTTP requests, jobs, document versions, retrievals, answer runs, and research steps. Content capture is off by default and governed by tenant policy and retention.
+OpenTelemetry provides vendor-neutral traces/metrics/log correlation with local/no-export defaults. An AI trace sink such as Langfuse may capture redacted AI traces, evaluation metadata, prompt/model/config lineage, latency, tokens, and cost when explicitly configured. Stable IDs connect HTTP requests, jobs, document versions, retrievals, answer runs, and research steps. Content capture is off by default and governed by tenant policy and retention.
 
-Dominant cost drivers are model tokens, embeddings/re-embeddings, reranking, parser compute, vector/search storage, object storage/egress, database I/O, and trace retention. Quality changes require latency/cost/quality evaluation, not intuition alone.
+Dominant production cost drivers are model tokens, embeddings/re-embeddings, reranking, parser compute, vector/search storage, object storage/egress, database I/O, and trace retention. Local tests and demos use deterministic fakes or local open-source services so cost instrumentation can be validated without monetary spend. Quality changes require latency/cost/quality evaluation, not intuition alone.
 
 ## Evolution rule
 

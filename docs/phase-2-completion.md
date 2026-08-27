@@ -20,6 +20,8 @@ Phase 2 keeps PostgreSQL as the authoritative state store. Finalization creates 
 
 The local object-store adapter deliberately models the future production boundary but avoids requiring cloud credentials for development and tests. Production S3-compatible storage, bucket policy, encryption, lifecycle rules, and dedicated service identities remain behind the same object-store interface.
 
+The Phase 2 build/test/demo path is zero-cost. It uses local Docker/PostgreSQL, deterministic development authentication, the local filesystem object-store adapter, and local API/web/worker services. It does not require paid SaaS, cloud resources, domains, model-provider APIs, or large local model downloads.
+
 ## Security properties
 
 - Tenant-owned rows include workspace scope.
@@ -45,7 +47,7 @@ The local object-store adapter deliberately models the future production boundar
 
 ## Validation evidence
 
-The phase gate includes API lint/typecheck/tests, worker lint/typecheck/tests, web lint/typecheck/build, contract generation, migration execution, and an end-to-end local demonstration through HTTP.
+The phase gate includes API lint/typecheck/tests, worker lint/typecheck/tests, web lint/typecheck/build, contract generation, migration execution, and an end-to-end zero-cost local demonstration through HTTP.
 
 ## Explicit deferrals
 

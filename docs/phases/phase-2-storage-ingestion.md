@@ -2,7 +2,7 @@
 
 ## Scope
 
-Implement source/document/version metadata, direct-to-object-store upload intents and finalization, durable ingestion jobs, worker leasing/heartbeat/retry/cancel/replay, transactional publication mechanism, status UI/API, and cleanup/reconciliation. Stages may verify and hand off placeholder processing; parsing/chunking belongs to Phase 3.
+Implement source/document/version metadata, direct-to-object-store upload intents and finalization, durable ingestion jobs, worker leasing/heartbeat/retry/cancel/replay, transactional publication mechanism, status UI/API, and cleanup/reconciliation. Stages may verify and hand off placeholder processing; parsing/chunking belongs to Phase 3. The implementation and demonstration must remain zero-cost: local PostgreSQL, local filesystem object storage, deterministic development authentication, and local API/web/worker services only.
 
 ## Engineering concepts
 
@@ -34,7 +34,7 @@ Upload abandoned; finalize repeated; object exists but DB commit fails; DB commi
 
 ## Testing strategy
 
-State-transition property/table tests; integration tests for transactional enqueue and object adapter; crash-point/fault-injection tests around every boundary; duplicate/reorder/stale-lease tests; cancellation and retry classification; cross-tenant signed URL/status tests; local small-object end-to-end; migration, lint, typecheck, build.
+State-transition property/table tests; integration tests for transactional enqueue and object adapter; crash-point/fault-injection tests around every boundary; duplicate/reorder/stale-lease tests; cancellation and retry classification; cross-tenant signed URL/status tests; zero-cost local small-object end-to-end; migration, lint, typecheck, build.
 
 ## Acceptance criteria
 

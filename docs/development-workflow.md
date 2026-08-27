@@ -6,6 +6,7 @@ Atlas AI is implemented through explicit engineering phases. The phase specifica
 
 - Work on one approved phase at a time.
 - Do not begin the next phase until its scope is explicitly approved.
+- Keep every phase buildable, testable, and demonstrable at zero monetary cost.
 - Keep implementation, tests, security review, failure handling, documentation, and demonstration evidence aligned with the active phase specification.
 - Record architecture changes in `docs/decisions.md`.
 - Update `docs/architecture.md`, `docs/threat-model.md`, and `docs/system-design-visuals.md` when component boundaries, authoritative stores, trust boundaries, major data flows, state machines, or scaling decisions change.
@@ -31,6 +32,8 @@ pnpm db:migrate
 ```
 
 Implementation evidence should include real command output and, where practical, an end-to-end local demonstration of the user/API/worker/security/failure behavior introduced by the phase.
+
+The default phase gate must not require paid SaaS, cloud accounts, domains, paid model APIs, or mandatory large local model downloads. Provider-facing behavior must have deterministic fakes/mocks or genuinely free local alternatives. Live provider, managed cloud, hosted observability, hosted search, domain, and Terraform-provisioned infrastructure checks are opt-in only and require explicit approval before use.
 
 ## Security and repository hygiene
 

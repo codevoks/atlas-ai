@@ -21,9 +21,9 @@ Each phase specification contains the mandatory scope, engineering concepts, arc
 
 ## Phase gate protocol
 
-Product gate evidence must include targeted tests, relevant integration/security/failure tests, lint, typecheck, build, migration forward/backward safety where relevant, dependency/resource impact, and exact results. AI behavior tests must be deterministic by default; live-provider checks are opt-in smoke tests with budget limits.
+Product gate evidence must include targeted tests, relevant integration/security/failure tests, lint, typecheck, build, migration forward/backward safety where relevant, dependency/resource impact, and exact results. Each phase must remain buildable, testable, and demonstrable at zero monetary cost. AI behavior tests must be deterministic by default; live-provider checks are opt-in smoke tests only and require explicit approval before any paid or hosted API is called.
 
-Every implementation phase must end with a reproducible demonstration before work stops for the next explicit authorization. Demonstrations should exercise the user/API/worker/security/failure behavior introduced by the phase and state honest limitations.
+Every implementation phase must end with a reproducible zero-cost demonstration before work stops for the next explicit authorization. Demonstrations should exercise the user/API/worker/security/failure behavior introduced by the phase and state honest limitations.
 
 ## Definition of implementation-grade
 

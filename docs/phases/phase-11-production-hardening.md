@@ -2,7 +2,7 @@
 
 ## Scope
 
-Instrument OpenTelemetry and Langfuse; define SLOs from measured product needs; load/soak/failure test; profile and optimize cost/latency; benchmark pgvector/PostgreSQL lexical against OpenSearch only if trigger criteria are met; containerize; provision a least-privilege single-region AWS baseline with Terraform; create GitHub Actions CI/CD; validate backup/restore, migrations, rollout/rollback, scaling, and operational runbooks.
+Instrument OpenTelemetry with local/no-export defaults and an optional AI trace sink such as Langfuse; define SLOs from measured product needs; load/soak/failure test; profile and optimize cost/latency; benchmark pgvector/PostgreSQL lexical against OpenSearch only if trigger criteria are met; containerize; create GitHub Actions CI/CD; document a least-privilege single-region AWS/Terraform baseline without provisioning billable resources by default; validate backup/restore, migrations, rollout/rollback, scaling, and operational runbooks.
 
 ## Engineering concepts
 
@@ -10,7 +10,7 @@ SLIs/SLOs/error budgets, RED/USE signals, traces/metrics/logs, AI trace privacy,
 
 ## Architecture changes and modules
 
-Add instrumentation SDK boundary, trace propagation through HTTP/jobs/research, Langfuse adapter with content-off defaults, metrics/dashboards/alerts, containers, Terraform modules, CI/CD pipelines, environment promotion, migration/reindex controllers, backup/restore and runbooks. Split worker pools by workload if tests show contention.
+Add instrumentation SDK boundary, trace propagation through HTTP/jobs/research, optional AI trace sink adapter with content-off defaults, metrics/dashboards/alerts, containers, Terraform modules guarded from automatic apply, CI/CD pipelines, environment promotion, migration/reindex controllers, backup/restore and runbooks. Split worker pools by workload if tests show contention.
 
 If an OpenSearch trigger is met—PostgreSQL search SLO/recall fails at representative scale, required analyzer/facet/search features are unavailable, or isolation/operational needs justify it—build an asynchronous derived projection, dual-read shadow comparison, reconciliation, cutover flag, and rollback. PostgreSQL remains authoritative.
 
@@ -28,7 +28,7 @@ Truthful liveness/readiness (readiness checks critical dependencies without casc
 
 ## Security requirements
 
-Private networking/security groups, TLS, encryption at rest, least-privilege IAM per service, managed secret store and rotation, no long-lived CI cloud keys (OIDC), protected environments, pinned/scanned builds, non-public databases/buckets/Redis/search, WAF/rate limits as justified, encrypted Terraform state with locking, redacted access-controlled telemetry, backup access/restore audit.
+Private networking/security groups, TLS, encryption at rest, least-privilege IAM per service, managed secret store and rotation, no long-lived CI cloud keys (OIDC), protected environments, pinned/scanned builds, non-public databases/buckets/Redis/search, WAF/rate limits as justified, encrypted Terraform state with locking, redacted access-controlled telemetry, backup access/restore audit. Any cloud account, hosted observability, domain, or managed-service provisioning is opt-in and requires explicit approval.
 
 ## Failure scenarios
 
@@ -36,11 +36,11 @@ Traffic spike/noisy tenant; DB pool exhaustion; queue backlog/provider throttle;
 
 ## Testing strategy
 
-Representative load model with declared assumptions; load/soak/spike and tenant-fairness tests; chaos/fault injection for dependencies; trace completeness/redaction and alert tests; migration compatibility/rollback rehearsal; backup restore and derived-index rebuild drill; Terraform validate/plan/policy checks; image/dependency scan; CI branch/protected deployment checks; pgvector/OpenSearch shadow evaluation if triggered.
+Representative load model with declared assumptions; zero-cost local load/soak/spike and tenant-fairness tests; chaos/fault injection for dependencies; trace completeness/redaction and alert tests; migration compatibility/rollback rehearsal; backup restore and derived-index rebuild drill; Terraform validate/plan/policy checks without apply by default; image/dependency scan; CI branch/protected deployment checks; pgvector/OpenSearch shadow evaluation if triggered.
 
 ## Acceptance criteria
 
-Measured capacity envelope and bottlenecks are documented; SLOs/alerts map to user outcomes; cost per successful ingestion/search/answer/research is attributable; restore and rollback drills succeed; infrastructure is reproducible and least privilege; telemetry leaks no canary content; OpenSearch is either adopted with benchmark/cutover evidence or explicitly rejected/deferred with results.
+Measured capacity envelope and bottlenecks are documented; SLOs/alerts map to user outcomes; cost per successful ingestion/search/answer/research is attributable; restore and rollback drills succeed; local infrastructure is reproducible and production infrastructure is least-privilege when explicitly provisioned; telemetry leaks no canary content; OpenSearch is either adopted with benchmark/cutover evidence or explicitly rejected/deferred with results.
 
 ## Engineering review focus and implementation drills
 
@@ -52,4 +52,4 @@ Explain first 100× bottlenecks, 10M-document options, partition/shard/tenant pl
 
 ## Explicit deferrals and final boundary
 
-Multi-region active-active, Kubernetes, microservice decomposition, enterprise compliance certification, every provider integration, every connector, and multi-agent behavior require explicit product/scale evidence. Final completion proves a defensible production baseline, not infinite feature coverage. After the final product gate, stop and report remaining risks/backlog.
+Multi-region active-active, Kubernetes, microservice decomposition, enterprise compliance certification, every paid/hosted provider integration, every connector, domain setup, and multi-agent behavior require explicit product/scale evidence and opt-in approval before billable execution. Final completion proves a defensible production baseline plus a reproducible zero-cost demo path, not infinite feature coverage. After the final product gate, stop and report remaining risks/backlog.
