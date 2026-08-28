@@ -10,6 +10,7 @@ from atlas_api.api.dependencies import (
     ActorDependency,
     AnswerServiceDependency,
     DocumentServiceDependency,
+    EvaluationServiceDependency,
     SemanticSearchServiceDependency,
     WorkspaceServiceDependency,
 )
@@ -24,6 +25,16 @@ from atlas_api.api.schemas import (
     DocumentVersionResponse,
     EmbeddingBackfillRequest,
     EmbeddingBackfillResponse,
+    EvaluationBaselineApprove,
+    EvaluationBaselineResponse,
+    EvaluationDatasetCreate,
+    EvaluationDatasetListResponse,
+    EvaluationDatasetResponse,
+    EvaluationDatasetVersionCreate,
+    EvaluationDatasetVersionResponse,
+    EvaluationRunCreate,
+    EvaluationRunListResponse,
+    EvaluationRunResponse,
     EvidenceResponse,
     HealthResponse,
     IngestionJobResponse,
@@ -490,6 +501,165 @@ async def get_answer_run(
         answer_run_id=answer_run_id,
     )
     return AnswerResponse.from_record(record)
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/evaluation-datasets",
+    response_model=EvaluationDatasetListResponse,
+    tags=["evaluations"],
+)
+async def list_evaluation_datasets(
+    workspace_id: uuid.UUID,
+    actor: ActorDependency,
+    service: EvaluationServiceDependency,
+) -> EvaluationDatasetListResponse:
+    records = await service.list_datasets(actor=actor, workspace_id=workspace_id)
+    return EvaluationDatasetListResponse(
+        items=[EvaluationDatasetResponse.from_record(item) for item in records]
+    )
+
+
+@router.post(
+    "/v1/workspaces/{workspace_id}/evaluation-datasets",
+    response_model=EvaluationDatasetResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["evaluations"],
+)
+async def create_evaluation_dataset(
+    workspace_id: uuid.UUID,
+    payload: EvaluationDatasetCreate,
+    actor: ActorDependency,
+    service: EvaluationServiceDependency,
+) -> EvaluationDatasetResponse:
+    record = await service.create_dataset(
+        actor=actor,
+        workspace_id=workspace_id,
+        name=payload.name,
+        description=payload.description,
+    )
+    return EvaluationDatasetResponse.from_record(record)
+
+
+@router.post(
+    "/v1/workspaces/{workspace_id}/evaluation-datasets/{dataset_id}/versions",
+    response_model=EvaluationDatasetVersionResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["evaluations"],
+)
+async def create_evaluation_dataset_version(
+    workspace_id: uuid.UUID,
+    dataset_id: uuid.UUID,
+    payload: EvaluationDatasetVersionCreate,
+    actor: ActorDependency,
+    service: EvaluationServiceDependency,
+) -> EvaluationDatasetVersionResponse:
+    record = await service.create_dataset_version(
+        actor=actor,
+        workspace_id=workspace_id,
+        dataset_id=dataset_id,
+        description=payload.description,
+        cases=[case.to_draft() for case in payload.cases],
+    )
+    return EvaluationDatasetVersionResponse.from_record(record)
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/evaluation-dataset-versions/{dataset_version_id}",
+    response_model=EvaluationDatasetVersionResponse,
+    tags=["evaluations"],
+)
+async def get_evaluation_dataset_version(
+    workspace_id: uuid.UUID,
+    dataset_version_id: uuid.UUID,
+    actor: ActorDependency,
+    service: EvaluationServiceDependency,
+) -> EvaluationDatasetVersionResponse:
+    record = await service.get_dataset_version(
+        actor=actor,
+        workspace_id=workspace_id,
+        dataset_version_id=dataset_version_id,
+    )
+    return EvaluationDatasetVersionResponse.from_record(record)
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/evaluation-runs",
+    response_model=EvaluationRunListResponse,
+    tags=["evaluations"],
+)
+async def list_evaluation_runs(
+    workspace_id: uuid.UUID,
+    actor: ActorDependency,
+    service: EvaluationServiceDependency,
+    limit: int = 10,
+) -> EvaluationRunListResponse:
+    bounded_limit = max(1, min(limit, 50))
+    records = await service.list_runs(actor=actor, workspace_id=workspace_id, limit=bounded_limit)
+    return EvaluationRunListResponse(
+        items=[EvaluationRunResponse.from_record(item) for item in records]
+    )
+
+
+@router.post(
+    "/v1/workspaces/{workspace_id}/evaluation-runs",
+    response_model=EvaluationRunResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["evaluations"],
+)
+async def create_evaluation_run(
+    workspace_id: uuid.UUID,
+    payload: EvaluationRunCreate,
+    actor: ActorDependency,
+    service: EvaluationServiceDependency,
+) -> EvaluationRunResponse:
+    record = await service.run_evaluation(
+        actor=actor,
+        workspace_id=workspace_id,
+        dataset_version_id=payload.dataset_version_id,
+        run_name=payload.run_name,
+    )
+    return EvaluationRunResponse.from_record(record)
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/evaluation-runs/{evaluation_run_id}",
+    response_model=EvaluationRunResponse,
+    tags=["evaluations"],
+)
+async def get_evaluation_run(
+    workspace_id: uuid.UUID,
+    evaluation_run_id: uuid.UUID,
+    actor: ActorDependency,
+    service: EvaluationServiceDependency,
+) -> EvaluationRunResponse:
+    record = await service.get_run(
+        actor=actor,
+        workspace_id=workspace_id,
+        evaluation_run_id=evaluation_run_id,
+    )
+    return EvaluationRunResponse.from_record(record)
+
+
+@router.post(
+    "/v1/workspaces/{workspace_id}/evaluation-runs/{evaluation_run_id}/baseline",
+    response_model=EvaluationBaselineResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["evaluations"],
+)
+async def approve_evaluation_baseline(
+    workspace_id: uuid.UUID,
+    evaluation_run_id: uuid.UUID,
+    payload: EvaluationBaselineApprove,
+    actor: ActorDependency,
+    service: EvaluationServiceDependency,
+) -> EvaluationBaselineResponse:
+    record = await service.approve_baseline(
+        actor=actor,
+        workspace_id=workspace_id,
+        evaluation_run_id=evaluation_run_id,
+        notes=payload.notes,
+    )
+    return EvaluationBaselineResponse.from_record(record)
 
 
 @router.post(

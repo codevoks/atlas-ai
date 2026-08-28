@@ -522,3 +522,193 @@ class CitationModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class EvaluationDatasetModel(TimestampMixin, Base):
+    __tablename__ = "evaluation_datasets"
+    __table_args__ = (
+        CheckConstraint("status IN ('active','archived')", name="valid_evaluation_dataset_status"),
+        UniqueConstraint("workspace_id", "name", name="uq_evaluation_datasets_workspace_name"),
+        Index("ix_evaluation_datasets_workspace_status", "workspace_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="active")
+
+
+class EvaluationDatasetVersionModel(Base):
+    __tablename__ = "evaluation_dataset_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "dataset_id", "version_number", name="uq_evaluation_dataset_versions_number"
+        ),
+        UniqueConstraint("dataset_id", "content_digest", name="uq_evaluation_dataset_digest"),
+        Index("ix_evaluation_dataset_versions_workspace", "workspace_id", "dataset_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    dataset_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("evaluation_datasets.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    case_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    config: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class EvaluationCaseModel(Base):
+    __tablename__ = "evaluation_cases"
+    __table_args__ = (
+        UniqueConstraint("dataset_version_id", "ordinal", name="uq_evaluation_cases_ordinal"),
+        Index("ix_evaluation_cases_workspace_version", "workspace_id", "dataset_version_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    dataset_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("evaluation_dataset_versions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    query_text: Mapped[str] = mapped_column(Text, nullable=False)
+    retrieval_mode: Mapped[str] = mapped_column(String(30), nullable=False)
+    top_k: Mapped[int] = mapped_column(Integer, nullable=False)
+    relevant_chunk_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    expected_answer_substrings: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list
+    )
+    expected_citation_quotes: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    slices: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    safe_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class EvaluationRunModel(Base):
+    __tablename__ = "evaluation_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('succeeded','failed','partial')", name="valid_evaluation_run_status"
+        ),
+        CheckConstraint("total_cost_usd >= 0", name="valid_evaluation_run_cost"),
+        Index("ix_evaluation_runs_workspace_created", "workspace_id", "started_at"),
+        Index("ix_evaluation_runs_workspace_dataset", "workspace_id", "dataset_version_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    dataset_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("evaluation_dataset_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    run_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    evaluation_config: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    metric_versions: Mapped[dict[str, str]] = mapped_column(JSONB, nullable=False, default=dict)
+    code_revision: Mapped[str] = mapped_column(String(80), nullable=False)
+    aggregate_metrics: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    slice_metrics: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    failure_summary: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    total_cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EvaluationResultModel(Base):
+    __tablename__ = "evaluation_results"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('succeeded','system_failed','metric_failed','missing_labels')",
+            name="valid_evaluation_result_status",
+        ),
+        UniqueConstraint(
+            "evaluation_run_id", "evaluation_case_id", name="uq_evaluation_result_case"
+        ),
+        Index("ix_evaluation_results_workspace_run", "workspace_id", "evaluation_run_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    evaluation_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("evaluation_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    evaluation_case_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("evaluation_cases.id", ondelete="RESTRICT"), nullable=False
+    )
+    answer_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("answer_runs.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    retrieved_chunk_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class EvaluationBaselineModel(Base):
+    __tablename__ = "evaluation_baselines"
+    __table_args__ = (
+        UniqueConstraint("dataset_id", "evaluation_run_id", name="uq_evaluation_baseline_run"),
+        Index("ix_evaluation_baselines_workspace_dataset", "workspace_id", "dataset_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    dataset_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("evaluation_datasets.id", ondelete="CASCADE"), nullable=False
+    )
+    dataset_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("evaluation_dataset_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    evaluation_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("evaluation_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    approved_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

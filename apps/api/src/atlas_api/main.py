@@ -15,6 +15,7 @@ from atlas_api.api.routes import router
 from atlas_api.application.services import (
     AnswerService,
     DocumentService,
+    EvaluationService,
     SemanticSearchService,
     WorkspaceService,
 )
@@ -73,6 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             transaction_factory, resolved_settings
         )
         app.state.answer_service = AnswerService(transaction_factory, resolved_settings)
+        app.state.evaluation_service = EvaluationService(transaction_factory, resolved_settings)
         yield
         await engine.dispose()
 

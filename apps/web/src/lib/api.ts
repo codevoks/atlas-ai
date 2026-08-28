@@ -113,6 +113,39 @@ export interface AnswerResult {
   created_at: string;
 }
 
+export interface EvaluationResult {
+  id: string;
+  evaluation_case_id: string;
+  status: string;
+  metrics: Record<string, unknown>;
+  retrieved_chunk_ids: string[];
+  answer_run_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  latency_ms: number;
+  total_cost_usd: number;
+  created_at: string;
+}
+
+export interface EvaluationRun {
+  id: string;
+  workspace_id: string;
+  dataset_version_id: string;
+  status: string;
+  run_name: string;
+  evaluation_config: Record<string, unknown>;
+  metric_versions: Record<string, string>;
+  code_revision: string;
+  aggregate_metrics: Record<string, unknown>;
+  slice_metrics: Record<string, unknown>;
+  failure_summary: Record<string, unknown>;
+  total_cost_usd: number;
+  latency_ms: number;
+  started_at: string;
+  completed_at: string | null;
+  results: EvaluationResult[];
+}
+
 interface ApiErrorPayload {
   error?: { code?: string; message?: string; request_id?: string };
 }
@@ -240,4 +273,11 @@ export async function answerQuestion(
     method: "POST",
     body: JSON.stringify({ query, retrieval_mode: retrievalMode, top_k: 5 }),
   });
+}
+
+export async function getEvaluationRuns(workspaceId: string): Promise<EvaluationRun[]> {
+  const payload = await apiRequest<{ items: EvaluationRun[] }>(
+    `/v1/workspaces/${workspaceId}/evaluation-runs?limit=5`,
+  );
+  return payload.items;
 }

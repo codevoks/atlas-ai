@@ -186,3 +186,24 @@ Residual risks and deferrals:
 - Citation validation is quote/span based; richer claim-level support analysis, contradiction handling, and faithfulness metrics belong to the evaluation and advanced RAG phases.
 - Streaming is intentionally disabled because safe partial-output validation requires a separate design.
 - Production debug/retention policy for persisted query and answer content needs deployment-specific controls before external customer use.
+
+## Phase 7 implementation security review
+
+Phase 7 adds versioned offline evaluation datasets, labeled cases, deterministic evaluation runs, per-case results, aggregate/slice/failure reports, and append-only baseline approvals.
+
+Security controls implemented:
+
+- Evaluation datasets, cases, runs, results, and baseline approvals are workspace-scoped and checked through the same membership/RBAC boundary as document and answer workflows.
+- Relevant chunk labels are accepted only when the referenced chunks are ready, active, and inside the same workspace.
+- Hidden expected answer fragments, expected citation quotes, and relevant chunk labels are used only by the metric layer after retrieval and answer generation complete; they are not passed into the system-under-test.
+- Evaluation runs reuse production retrieval and answer services, preserving tenant filters, prompt-injection handling, citation validation, provenance capture, and zero-cost provider boundaries.
+- Baseline approval requires workspace-update authorization and writes an audited append-only baseline record.
+- The default evaluator uses deterministic local metrics only. Paid judges, hosted model APIs, cloud resources, and large local model downloads remain disabled unless explicitly approved.
+- Failed system execution, metric failure, and missing labels are stored as distinct statuses so quality reports do not silently hide unsafe or incomplete cases.
+
+Residual risks and deferrals:
+
+- Phase 7 does not expose public export/import endpoints for evaluation corpora. Redacted export policy remains a later implementation detail.
+- Baseline thresholds are not hard-coded because meaningful gates require reviewed baseline distributions and business-risk calibration.
+- Human-review queues, blind/randomized review, hosted LLM judges, and online experimentation remain deferred.
+- Evaluation datasets may contain sensitive query/label text; deployment-specific retention, redaction, and access policy must be finalized before external customer use.

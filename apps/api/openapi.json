@@ -1298,6 +1298,476 @@
         }
       }
     },
+    "/v1/workspaces/{workspace_id}/evaluation-datasets": {
+      "get": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "List Evaluation Datasets",
+        "operationId": "list_evaluation_datasets_v1_workspaces__workspace_id__evaluation_datasets_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationDatasetListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "Create Evaluation Dataset",
+        "operationId": "create_evaluation_dataset_v1_workspaces__workspace_id__evaluation_datasets_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationDatasetCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationDatasetResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/evaluation-datasets/{dataset_id}/versions": {
+      "post": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "Create Evaluation Dataset Version",
+        "operationId": "create_evaluation_dataset_version_v1_workspaces__workspace_id__evaluation_datasets__dataset_id__versions_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "dataset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dataset Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationDatasetVersionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationDatasetVersionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/evaluation-dataset-versions/{dataset_version_id}": {
+      "get": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "Get Evaluation Dataset Version",
+        "operationId": "get_evaluation_dataset_version_v1_workspaces__workspace_id__evaluation_dataset_versions__dataset_version_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "dataset_version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dataset Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationDatasetVersionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/evaluation-runs": {
+      "get": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "List Evaluation Runs",
+        "operationId": "list_evaluation_runs_v1_workspaces__workspace_id__evaluation_runs_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationRunListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "Create Evaluation Run",
+        "operationId": "create_evaluation_run_v1_workspaces__workspace_id__evaluation_runs_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationRunCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/evaluation-runs/{evaluation_run_id}": {
+      "get": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "Get Evaluation Run",
+        "operationId": "get_evaluation_run_v1_workspaces__workspace_id__evaluation_runs__evaluation_run_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "evaluation_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evaluation Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/evaluation-runs/{evaluation_run_id}/baseline": {
+      "post": {
+        "tags": [
+          "evaluations"
+        ],
+        "summary": "Approve Evaluation Baseline",
+        "operationId": "approve_evaluation_baseline_v1_workspaces__workspace_id__evaluation_runs__evaluation_run_id__baseline_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "evaluation_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evaluation Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationBaselineApprove"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationBaselineResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/workspaces/{workspace_id}/embeddings/backfill": {
       "post": {
         "tags": [
@@ -2334,6 +2804,696 @@
           "missing_after"
         ],
         "title": "EmbeddingBackfillResponse"
+      },
+      "EvaluationBaselineApprove": {
+        "properties": {
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "title": "EvaluationBaselineApprove"
+      },
+      "EvaluationBaselineResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "dataset_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Dataset Id"
+          },
+          "dataset_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Dataset Version Id"
+          },
+          "evaluation_run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Evaluation Run Id"
+          },
+          "approved_by_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Approved By User Id"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "dataset_id",
+          "dataset_version_id",
+          "evaluation_run_id",
+          "approved_by_user_id",
+          "notes",
+          "created_at"
+        ],
+        "title": "EvaluationBaselineResponse"
+      },
+      "EvaluationCaseCreate": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Query"
+          },
+          "retrieval_mode": {
+            "type": "string",
+            "enum": [
+              "semantic",
+              "lexical",
+              "hybrid"
+            ],
+            "title": "Retrieval Mode",
+            "default": "hybrid"
+          },
+          "top_k": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "default": 5
+          },
+          "relevant_chunk_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Relevant Chunk Ids"
+          },
+          "expected_answer_substrings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Expected Answer Substrings"
+          },
+          "expected_citation_quotes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Expected Citation Quotes"
+          },
+          "slices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Slices"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query",
+          "relevant_chunk_ids"
+        ],
+        "title": "EvaluationCaseCreate"
+      },
+      "EvaluationCaseResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "dataset_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Dataset Version Id"
+          },
+          "ordinal": {
+            "type": "integer",
+            "title": "Ordinal"
+          },
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "retrieval_mode": {
+            "type": "string",
+            "title": "Retrieval Mode"
+          },
+          "top_k": {
+            "type": "integer",
+            "title": "Top K"
+          },
+          "relevant_chunk_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Relevant Chunk Ids"
+          },
+          "expected_answer_substrings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Expected Answer Substrings"
+          },
+          "expected_citation_quotes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Expected Citation Quotes"
+          },
+          "slices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Slices"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "dataset_version_id",
+          "ordinal",
+          "query",
+          "retrieval_mode",
+          "top_k",
+          "relevant_chunk_ids",
+          "expected_answer_substrings",
+          "expected_citation_quotes",
+          "slices",
+          "metadata"
+        ],
+        "title": "EvaluationCaseResponse"
+      },
+      "EvaluationDatasetCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "EvaluationDatasetCreate"
+      },
+      "EvaluationDatasetListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationDatasetResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "EvaluationDatasetListResponse"
+      },
+      "EvaluationDatasetResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "latest_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Version Id"
+          },
+          "latest_version_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Version Number"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "name",
+          "description",
+          "status",
+          "latest_version_id",
+          "latest_version_number",
+          "created_at"
+        ],
+        "title": "EvaluationDatasetResponse"
+      },
+      "EvaluationDatasetVersionCreate": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationCaseCreate"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Cases"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cases"
+        ],
+        "title": "EvaluationDatasetVersionCreate"
+      },
+      "EvaluationDatasetVersionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "dataset_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Dataset Id"
+          },
+          "version_number": {
+            "type": "integer",
+            "title": "Version Number"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "case_count": {
+            "type": "integer",
+            "title": "Case Count"
+          },
+          "content_digest": {
+            "type": "string",
+            "title": "Content Digest"
+          },
+          "config": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config"
+          },
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationCaseResponse"
+            },
+            "type": "array",
+            "title": "Cases"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "dataset_id",
+          "version_number",
+          "description",
+          "case_count",
+          "content_digest",
+          "config",
+          "cases",
+          "created_at"
+        ],
+        "title": "EvaluationDatasetVersionResponse"
+      },
+      "EvaluationResultResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "evaluation_case_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Evaluation Case Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metrics"
+          },
+          "retrieved_chunk_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Retrieved Chunk Ids"
+          },
+          "answer_run_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer Run Id"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "latency_ms": {
+            "type": "integer",
+            "title": "Latency Ms"
+          },
+          "total_cost_usd": {
+            "type": "number",
+            "title": "Total Cost Usd"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "evaluation_case_id",
+          "status",
+          "metrics",
+          "retrieved_chunk_ids",
+          "answer_run_id",
+          "error_code",
+          "error_message",
+          "latency_ms",
+          "total_cost_usd",
+          "created_at"
+        ],
+        "title": "EvaluationResultResponse"
+      },
+      "EvaluationRunCreate": {
+        "properties": {
+          "dataset_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Dataset Version Id"
+          },
+          "run_name": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 2,
+            "title": "Run Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dataset_version_id",
+          "run_name"
+        ],
+        "title": "EvaluationRunCreate"
+      },
+      "EvaluationRunListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationRunResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "EvaluationRunListResponse"
+      },
+      "EvaluationRunResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "dataset_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Dataset Version Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "run_name": {
+            "type": "string",
+            "title": "Run Name"
+          },
+          "evaluation_config": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Evaluation Config"
+          },
+          "metric_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Metric Versions"
+          },
+          "code_revision": {
+            "type": "string",
+            "title": "Code Revision"
+          },
+          "aggregate_metrics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Aggregate Metrics"
+          },
+          "slice_metrics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Slice Metrics"
+          },
+          "failure_summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Failure Summary"
+          },
+          "total_cost_usd": {
+            "type": "number",
+            "title": "Total Cost Usd"
+          },
+          "latency_ms": {
+            "type": "integer",
+            "title": "Latency Ms"
+          },
+          "started_at": {
+            "type": "string",
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationResultResponse"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "dataset_version_id",
+          "status",
+          "run_name",
+          "evaluation_config",
+          "metric_versions",
+          "code_revision",
+          "aggregate_metrics",
+          "slice_metrics",
+          "failure_summary",
+          "total_cost_usd",
+          "latency_ms",
+          "started_at",
+          "completed_at",
+          "results"
+        ],
+        "title": "EvaluationRunResponse"
       },
       "EvidenceResponse": {
         "properties": {

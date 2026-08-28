@@ -433,7 +433,38 @@ flowchart TB
 
 Old content, vectors, and configurations coexist during migrations. Evaluation precedes promotion, and rollback remains possible until retention deliberately removes superseded derived data.
 
-## 5. Evidence-driven scale evolution
+## 5. Phase 7 deterministic evaluation run
+
+```mermaid
+flowchart TB
+    User[Authorized workspace member] --> API[Evaluation API]
+    API --> Auth[RBAC and tenant checks]
+    Auth --> Dataset[(evaluation_datasets)]
+    Auth --> Version[(immutable dataset version)]
+    Version --> Cases[(labeled evaluation_cases)]
+    Cases --> LabelCheck[Validate relevant chunk IDs\nready, active, same workspace]
+    LabelCheck --> Run[(evaluation_runs\nconfig + code revision)]
+    Run --> SUT[System under test\nproduction retrieval + answer services]
+    SUT --> Search[Semantic, lexical, or hybrid retrieval]
+    Search --> Answer[Grounded answer + citation validator]
+    Answer --> Metrics[Deterministic local metrics\nRecall, Precision, MRR, NDCG,\nanswer/citation coverage]
+    Cases --> Metrics
+    Metrics --> Results[(evaluation_results)]
+    Results --> Aggregate[Aggregate, slice,\nand failure summaries]
+    Aggregate --> Run
+    Run --> Baseline[(append-only baseline approval)]
+
+    classDef trusted fill:var(--viz-series-1),color:var(--foreground),stroke:var(--border);
+    classDef labels fill:var(--viz-series-4),color:var(--foreground),stroke:var(--border);
+    classDef untrusted fill:var(--viz-series-2),color:var(--foreground),stroke:var(--border);
+    class API,Auth,LabelCheck,Metrics trusted;
+    class Dataset,Version,Cases labels;
+    class SUT,Search,Answer untrusted;
+```
+
+Expected labels are intentionally separated from the production retrieval and answer path. They are consumed only by the metric layer after the system-under-test has produced outputs, which prevents expected-answer leakage and keeps evaluation evidence meaningful.
+
+## 6. Evidence-driven scale evolution
 
 ```mermaid
 flowchart LR

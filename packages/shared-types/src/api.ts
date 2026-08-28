@@ -333,6 +333,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workspaces/{workspace_id}/evaluation-datasets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Evaluation Datasets */
+        get: operations["list_evaluation_datasets_v1_workspaces__workspace_id__evaluation_datasets_get"];
+        put?: never;
+        /** Create Evaluation Dataset */
+        post: operations["create_evaluation_dataset_v1_workspaces__workspace_id__evaluation_datasets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workspaces/{workspace_id}/evaluation-datasets/{dataset_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Evaluation Dataset Version */
+        post: operations["create_evaluation_dataset_version_v1_workspaces__workspace_id__evaluation_datasets__dataset_id__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workspaces/{workspace_id}/evaluation-dataset-versions/{dataset_version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Evaluation Dataset Version */
+        get: operations["get_evaluation_dataset_version_v1_workspaces__workspace_id__evaluation_dataset_versions__dataset_version_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workspaces/{workspace_id}/evaluation-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Evaluation Runs */
+        get: operations["list_evaluation_runs_v1_workspaces__workspace_id__evaluation_runs_get"];
+        put?: never;
+        /** Create Evaluation Run */
+        post: operations["create_evaluation_run_v1_workspaces__workspace_id__evaluation_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workspaces/{workspace_id}/evaluation-runs/{evaluation_run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Evaluation Run */
+        get: operations["get_evaluation_run_v1_workspaces__workspace_id__evaluation_runs__evaluation_run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workspaces/{workspace_id}/evaluation-runs/{evaluation_run_id}/baseline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Evaluation Baseline */
+        post: operations["approve_evaluation_baseline_v1_workspaces__workspace_id__evaluation_runs__evaluation_run_id__baseline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workspaces/{workspace_id}/embeddings/backfill": {
         parameters: {
             query?: never;
@@ -747,6 +851,294 @@ export interface components {
             embedded_count: number;
             /** Missing After */
             missing_after: number;
+        };
+        /** EvaluationBaselineApprove */
+        EvaluationBaselineApprove: {
+            /** Notes */
+            notes?: string | null;
+        };
+        /** EvaluationBaselineResponse */
+        EvaluationBaselineResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Dataset Version Id
+             * Format: uuid
+             */
+            dataset_version_id: string;
+            /**
+             * Evaluation Run Id
+             * Format: uuid
+             */
+            evaluation_run_id: string;
+            /**
+             * Approved By User Id
+             * Format: uuid
+             */
+            approved_by_user_id: string;
+            /** Notes */
+            notes: string | null;
+            /** Created At */
+            created_at: string;
+        };
+        /** EvaluationCaseCreate */
+        EvaluationCaseCreate: {
+            /** Query */
+            query: string;
+            /**
+             * Retrieval Mode
+             * @default hybrid
+             * @enum {string}
+             */
+            retrieval_mode: "semantic" | "lexical" | "hybrid";
+            /**
+             * Top K
+             * @default 5
+             */
+            top_k: number;
+            /** Relevant Chunk Ids */
+            relevant_chunk_ids: string[];
+            /** Expected Answer Substrings */
+            expected_answer_substrings?: string[];
+            /** Expected Citation Quotes */
+            expected_citation_quotes?: string[];
+            /** Slices */
+            slices?: string[];
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+        };
+        /** EvaluationCaseResponse */
+        EvaluationCaseResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /**
+             * Dataset Version Id
+             * Format: uuid
+             */
+            dataset_version_id: string;
+            /** Ordinal */
+            ordinal: number;
+            /** Query */
+            query: string;
+            /** Retrieval Mode */
+            retrieval_mode: string;
+            /** Top K */
+            top_k: number;
+            /** Relevant Chunk Ids */
+            relevant_chunk_ids: string[];
+            /** Expected Answer Substrings */
+            expected_answer_substrings: string[];
+            /** Expected Citation Quotes */
+            expected_citation_quotes: string[];
+            /** Slices */
+            slices: string[];
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            };
+        };
+        /** EvaluationDatasetCreate */
+        EvaluationDatasetCreate: {
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+        };
+        /** EvaluationDatasetListResponse */
+        EvaluationDatasetListResponse: {
+            /** Items */
+            items: components["schemas"]["EvaluationDatasetResponse"][];
+        };
+        /** EvaluationDatasetResponse */
+        EvaluationDatasetResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string | null;
+            /** Status */
+            status: string;
+            /** Latest Version Id */
+            latest_version_id: string | null;
+            /** Latest Version Number */
+            latest_version_number: number | null;
+            /** Created At */
+            created_at: string;
+        };
+        /** EvaluationDatasetVersionCreate */
+        EvaluationDatasetVersionCreate: {
+            /** Description */
+            description?: string | null;
+            /** Cases */
+            cases: components["schemas"]["EvaluationCaseCreate"][];
+        };
+        /** EvaluationDatasetVersionResponse */
+        EvaluationDatasetVersionResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Version Number */
+            version_number: number;
+            /** Description */
+            description: string | null;
+            /** Case Count */
+            case_count: number;
+            /** Content Digest */
+            content_digest: string;
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
+            /** Cases */
+            cases: components["schemas"]["EvaluationCaseResponse"][];
+            /** Created At */
+            created_at: string;
+        };
+        /** EvaluationResultResponse */
+        EvaluationResultResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Evaluation Case Id
+             * Format: uuid
+             */
+            evaluation_case_id: string;
+            /** Status */
+            status: string;
+            /** Metrics */
+            metrics: {
+                [key: string]: unknown;
+            };
+            /** Retrieved Chunk Ids */
+            retrieved_chunk_ids: string[];
+            /** Answer Run Id */
+            answer_run_id: string | null;
+            /** Error Code */
+            error_code: string | null;
+            /** Error Message */
+            error_message: string | null;
+            /** Latency Ms */
+            latency_ms: number;
+            /** Total Cost Usd */
+            total_cost_usd: number;
+            /** Created At */
+            created_at: string;
+        };
+        /** EvaluationRunCreate */
+        EvaluationRunCreate: {
+            /**
+             * Dataset Version Id
+             * Format: uuid
+             */
+            dataset_version_id: string;
+            /** Run Name */
+            run_name: string;
+        };
+        /** EvaluationRunListResponse */
+        EvaluationRunListResponse: {
+            /** Items */
+            items: components["schemas"]["EvaluationRunResponse"][];
+        };
+        /** EvaluationRunResponse */
+        EvaluationRunResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /**
+             * Dataset Version Id
+             * Format: uuid
+             */
+            dataset_version_id: string;
+            /** Status */
+            status: string;
+            /** Run Name */
+            run_name: string;
+            /** Evaluation Config */
+            evaluation_config: {
+                [key: string]: unknown;
+            };
+            /** Metric Versions */
+            metric_versions: {
+                [key: string]: string;
+            };
+            /** Code Revision */
+            code_revision: string;
+            /** Aggregate Metrics */
+            aggregate_metrics: {
+                [key: string]: unknown;
+            };
+            /** Slice Metrics */
+            slice_metrics: {
+                [key: string]: unknown;
+            };
+            /** Failure Summary */
+            failure_summary: {
+                [key: string]: unknown;
+            };
+            /** Total Cost Usd */
+            total_cost_usd: number;
+            /** Latency Ms */
+            latency_ms: number;
+            /** Started At */
+            started_at: string;
+            /** Completed At */
+            completed_at: string | null;
+            /** Results */
+            results: components["schemas"]["EvaluationResultResponse"][];
         };
         /** EvidenceResponse */
         EvidenceResponse: {
@@ -1914,6 +2306,276 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnswerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_evaluation_datasets_v1_workspaces__workspace_id__evaluation_datasets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationDatasetListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_evaluation_dataset_v1_workspaces__workspace_id__evaluation_datasets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluationDatasetCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationDatasetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_evaluation_dataset_version_v1_workspaces__workspace_id__evaluation_datasets__dataset_id__versions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluationDatasetVersionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationDatasetVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_evaluation_dataset_version_v1_workspaces__workspace_id__evaluation_dataset_versions__dataset_version_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                dataset_version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationDatasetVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_evaluation_runs_v1_workspaces__workspace_id__evaluation_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationRunListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_evaluation_run_v1_workspaces__workspace_id__evaluation_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluationRunCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_evaluation_run_v1_workspaces__workspace_id__evaluation_runs__evaluation_run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                evaluation_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_evaluation_baseline_v1_workspaces__workspace_id__evaluation_runs__evaluation_run_id__baseline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                evaluation_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluationBaselineApprove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationBaselineResponse"];
                 };
             };
             /** @description Validation Error */

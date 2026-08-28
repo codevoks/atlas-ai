@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -10,6 +12,12 @@ from atlas_api.application.embeddings import (
     DeterministicLocalEmbeddingProvider,
     EmbeddingBatchPlanner,
     EmbeddingRequest,
+)
+from atlas_api.application.evaluations import (
+    METRIC_VERSIONS,
+    DeterministicEvaluationRunner,
+    aggregate_results,
+    current_code_revision,
 )
 from atlas_api.application.generation import (
     CitationValidator,
@@ -24,6 +32,12 @@ from atlas_api.application.ports import (
     DocumentRecord,
     DocumentVersionRecord,
     EmbeddingBackfillResult,
+    EvaluationBaselineRecord,
+    EvaluationCaseDraft,
+    EvaluationDatasetRecord,
+    EvaluationDatasetVersionRecord,
+    EvaluationResultRecord,
+    EvaluationRunRecord,
     IngestionJobRecord,
     MemberRecord,
     SearchCandidate,
@@ -41,7 +55,14 @@ from atlas_api.domain.errors import (
     ResourceNotFoundError,
     ValidationError,
 )
-from atlas_api.domain.models import Actor, AnswerRunStatus, Permission, Role
+from atlas_api.domain.models import (
+    Actor,
+    AnswerRunStatus,
+    EvaluationResultStatus,
+    EvaluationRunStatus,
+    Permission,
+    Role,
+)
 from atlas_api.domain.policy import can_manage_role, require_permission
 from atlas_api.infrastructure.object_store import LocalObjectStore
 
@@ -771,3 +792,299 @@ class AnswerService:
             if record is None:
                 raise ResourceNotFoundError()
             return record
+
+
+class EvaluationService:
+    def __init__(self, transaction_factory: TransactionFactory, settings: Settings) -> None:
+        self._transactions = transaction_factory
+        self._settings = settings
+        self._search = SemanticSearchService(transaction_factory, settings)
+        self._answer = AnswerService(transaction_factory, settings)
+        self._runner = DeterministicEvaluationRunner(self._search, self._answer)
+
+    async def create_dataset(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        name: str,
+        description: str | None,
+    ) -> EvaluationDatasetRecord:
+        clean_name = self._clean_name(name)
+        clean_description = self._clean_optional_text(description, limit=1_000)
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.DOCUMENT_CREATE)
+            return await tx.documents.create_evaluation_dataset(
+                actor=actor,
+                workspace_id=workspace_id,
+                name=clean_name,
+                description=clean_description,
+            )
+
+    async def list_datasets(
+        self, *, actor: Actor, workspace_id: uuid.UUID
+    ) -> list[EvaluationDatasetRecord]:
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.DOCUMENT_READ)
+            return await tx.documents.list_evaluation_datasets(workspace_id)
+
+    async def create_dataset_version(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        description: str | None,
+        cases: list[EvaluationCaseDraft],
+    ) -> EvaluationDatasetVersionRecord:
+        clean_description = self._clean_optional_text(description, limit=1_000)
+        if not (1 <= len(cases) <= 50):
+            raise ValidationError(
+                "Evaluation dataset versions must contain between 1 and 50 cases."
+            )
+        clean_cases = [self._clean_case(case) for case in cases]
+        labeled_chunk_ids = sorted(
+            {chunk_id for case in clean_cases for chunk_id in case.relevant_chunk_ids}
+        )
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.DOCUMENT_CREATE)
+            dataset = await tx.documents.get_evaluation_dataset(workspace_id, dataset_id)
+            if dataset is None:
+                raise ResourceNotFoundError()
+            valid_chunk_ids = await tx.documents.validate_ready_chunk_ids(
+                workspace_id, labeled_chunk_ids
+            )
+            missing = set(labeled_chunk_ids) - valid_chunk_ids
+            if missing:
+                raise ValidationError(
+                    "Evaluation cases reference unavailable or unauthorized chunks."
+                )
+            return await tx.documents.create_evaluation_dataset_version(
+                actor=actor,
+                workspace_id=workspace_id,
+                dataset_id=dataset_id,
+                description=clean_description,
+                config={
+                    "schema_version": "phase7-evaluation-dataset-v1",
+                    "content_redacted": False,
+                    "expected_answers_hidden_from_system_under_test": True,
+                    "max_cases": 50,
+                },
+                content_digest=self._dataset_digest(clean_cases),
+                cases=clean_cases,
+            )
+
+    async def get_dataset_version(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        dataset_version_id: uuid.UUID,
+    ) -> EvaluationDatasetVersionRecord:
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.DOCUMENT_READ)
+            version = await tx.documents.get_evaluation_dataset_version(
+                workspace_id, dataset_version_id
+            )
+            if version is None:
+                raise ResourceNotFoundError()
+            return version
+
+    async def run_evaluation(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        dataset_version_id: uuid.UUID,
+        run_name: str,
+    ) -> EvaluationRunRecord:
+        clean_name = self._clean_name(run_name)
+        started = datetime.now(UTC)
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.DOCUMENT_READ)
+            version = await tx.documents.get_evaluation_dataset_version(
+                workspace_id, dataset_version_id
+            )
+            if version is None:
+                raise ResourceNotFoundError()
+            run = await tx.documents.create_evaluation_run(
+                actor=actor,
+                workspace_id=workspace_id,
+                dataset_version_id=dataset_version_id,
+                run_name=clean_name,
+                evaluation_config={
+                    "runner": "deterministic-local",
+                    "runner_version": "phase7-evaluation-runner-v1",
+                    "paid_services": False,
+                    "large_local_model_required": False,
+                },
+                metric_versions=METRIC_VERSIONS,
+                code_revision=current_code_revision(),
+            )
+        result_drafts: list[EvaluationResultRecord] = []
+        for case in version.cases:
+            executed = await self._runner.run_case(
+                actor=actor, workspace_id=workspace_id, case=case
+            )
+            result_drafts.append(
+                EvaluationResultRecord(
+                    id=uuid.uuid4(),
+                    workspace_id=workspace_id,
+                    evaluation_run_id=run.id,
+                    evaluation_case_id=case.id,
+                    status=executed.status,
+                    metrics=executed.metrics,
+                    retrieved_chunk_ids=executed.retrieved_chunk_ids,
+                    answer_run_id=executed.answer_run_id,
+                    error_code=executed.error_code,
+                    error_message=executed.error_message,
+                    latency_ms=executed.latency_ms,
+                    total_cost_usd=executed.total_cost_usd,
+                    created_at=datetime.now(UTC),
+                )
+            )
+        aggregate, slices, failures = aggregate_results(version.cases, result_drafts)
+        succeeded = sum(
+            1 for result in result_drafts if result.status == EvaluationResultStatus.SUCCEEDED
+        )
+        status = (
+            EvaluationRunStatus.SUCCEEDED
+            if succeeded == len(result_drafts)
+            else EvaluationRunStatus.PARTIAL
+            if succeeded
+            else EvaluationRunStatus.FAILED
+        )
+        latency_ms = max(int((datetime.now(UTC) - started).total_seconds() * 1000), 0)
+        total_cost = sum(result.total_cost_usd for result in result_drafts)
+        async with self._transactions() as tx:
+            return await tx.documents.complete_evaluation_run(
+                workspace_id=workspace_id,
+                evaluation_run_id=run.id,
+                status=status,
+                aggregate_metrics=aggregate,
+                slice_metrics=slices,
+                failure_summary=failures,
+                total_cost_usd=total_cost,
+                latency_ms=latency_ms,
+                results=result_drafts,
+            )
+
+    async def list_runs(
+        self, *, actor: Actor, workspace_id: uuid.UUID, limit: int
+    ) -> list[EvaluationRunRecord]:
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.DOCUMENT_READ)
+            return await tx.documents.list_evaluation_runs(workspace_id, limit=limit)
+
+    async def get_run(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        evaluation_run_id: uuid.UUID,
+    ) -> EvaluationRunRecord:
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.DOCUMENT_READ)
+            run = await tx.documents.get_evaluation_run(workspace_id, evaluation_run_id)
+            if run is None:
+                raise ResourceNotFoundError()
+            return run
+
+    async def approve_baseline(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        evaluation_run_id: uuid.UUID,
+        notes: str | None,
+    ) -> EvaluationBaselineRecord:
+        clean_notes = self._clean_optional_text(notes, limit=1_000)
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.WORKSPACE_UPDATE)
+            return await tx.documents.approve_evaluation_baseline(
+                actor=actor,
+                workspace_id=workspace_id,
+                evaluation_run_id=evaluation_run_id,
+                notes=clean_notes,
+            )
+
+    @staticmethod
+    def _clean_name(value: str) -> str:
+        clean = " ".join(value.split())
+        if len(clean) < 2:
+            raise ValidationError("Name must contain at least two visible characters.")
+        return clean[:160]
+
+    @staticmethod
+    def _clean_optional_text(value: str | None, *, limit: int) -> str | None:
+        if value is None:
+            return None
+        clean = " ".join(value.split())
+        return clean[:limit] if clean else None
+
+    def _clean_case(self, case: EvaluationCaseDraft) -> EvaluationCaseDraft:
+        query = " ".join(case.query.split())
+        if not query:
+            raise ValidationError("Evaluation case query must not be empty.")
+        if len(query) > self._settings.embedding_max_text_chars:
+            raise ValidationError("Evaluation case query exceeds the configured length limit.")
+        if not (1 <= case.top_k <= 20):
+            raise ValidationError("Evaluation case top_k must be between 1 and 20.")
+        if not case.relevant_chunk_ids:
+            raise ValidationError("Evaluation case must include relevant chunk labels.")
+        return EvaluationCaseDraft(
+            query=query,
+            retrieval_mode=case.retrieval_mode,
+            top_k=case.top_k,
+            relevant_chunk_ids=list(dict.fromkeys(case.relevant_chunk_ids)),
+            expected_answer_substrings=[
+                item.strip()[:500] for item in case.expected_answer_substrings if item.strip()
+            ][:10],
+            expected_citation_quotes=[
+                item.strip()[:500] for item in case.expected_citation_quotes if item.strip()
+            ][:10],
+            slices=[item.strip()[:80] for item in case.slices if item.strip()][:10] or ["default"],
+            metadata=case.metadata,
+        )
+
+    @staticmethod
+    def _dataset_digest(cases: list[EvaluationCaseDraft]) -> str:
+        payload = [
+            {
+                "query": case.query,
+                "retrieval_mode": case.retrieval_mode,
+                "top_k": case.top_k,
+                "relevant_chunk_ids": sorted(str(item) for item in case.relevant_chunk_ids),
+                "expected_answer_substrings": case.expected_answer_substrings,
+                "expected_citation_quotes": case.expected_citation_quotes,
+                "slices": sorted(case.slices),
+                "metadata": case.metadata,
+            }
+            for case in cases
+        ]
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(encoded.encode("utf-8")).hexdigest()

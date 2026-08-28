@@ -8,6 +8,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from atlas_api.application.services import (
     AnswerService,
     DocumentService,
+    EvaluationService,
     SemanticSearchService,
     WorkspaceService,
 )
@@ -44,6 +45,10 @@ def get_answer_service(request: Request) -> AnswerService:
     return cast(AnswerService, request.app.state.answer_service)
 
 
+def get_evaluation_service(request: Request) -> EvaluationService:
+    return cast(EvaluationService, request.app.state.evaluation_service)
+
+
 ActorDependency = Annotated[Actor, Depends(get_current_actor)]
 WorkspaceServiceDependency = Annotated[WorkspaceService, Depends(get_workspace_service)]
 DocumentServiceDependency = Annotated[DocumentService, Depends(get_document_service)]
@@ -51,3 +56,4 @@ SemanticSearchServiceDependency = Annotated[
     SemanticSearchService, Depends(get_semantic_search_service)
 ]
 AnswerServiceDependency = Annotated[AnswerService, Depends(get_answer_service)]
+EvaluationServiceDependency = Annotated[EvaluationService, Depends(get_evaluation_service)]

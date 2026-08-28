@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from types import TracebackType
+from typing import Literal, cast
 
 from sqlalchemy import Select, and_, delete, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
@@ -27,6 +28,13 @@ from atlas_api.application.ports import (
     DocumentVersionRecord,
     EmbeddingCoverageRecord,
     EmbeddingSetRecord,
+    EvaluationBaselineRecord,
+    EvaluationCaseDraft,
+    EvaluationCaseRecord,
+    EvaluationDatasetRecord,
+    EvaluationDatasetVersionRecord,
+    EvaluationResultRecord,
+    EvaluationRunRecord,
     IngestionJobRecord,
     MemberRecord,
     MissingEmbeddingChunkRecord,
@@ -48,6 +56,9 @@ from atlas_api.domain.models import (
     DocumentStatus,
     DocumentVersionStatus,
     EmbeddingSetStatus,
+    EvaluationDatasetStatus,
+    EvaluationResultStatus,
+    EvaluationRunStatus,
     IdentityClaims,
     IngestionJobState,
     MembershipContext,
@@ -68,6 +79,12 @@ from atlas_api.infrastructure.models import (
     DocumentModel,
     DocumentVersionModel,
     EmbeddingSetModel,
+    EvaluationBaselineModel,
+    EvaluationCaseModel,
+    EvaluationDatasetModel,
+    EvaluationDatasetVersionModel,
+    EvaluationResultModel,
+    EvaluationRunModel,
     IdempotencyRecordModel,
     IngestionJobModel,
     JobEventModel,
@@ -1231,6 +1248,318 @@ class SqlAlchemyDocumentStore:
             answer, list(evidence_rows), list(citation_rows), evidence_by_id
         )
 
+    async def validate_ready_chunk_ids(
+        self, workspace_id: uuid.UUID, chunk_ids: list[uuid.UUID]
+    ) -> set[uuid.UUID]:
+        if not chunk_ids:
+            return set()
+        rows = (
+            await self._session.scalars(
+                select(ChunkModel.id)
+                .join(
+                    DocumentVersionModel, DocumentVersionModel.id == ChunkModel.document_version_id
+                )
+                .join(DocumentModel, DocumentModel.id == DocumentVersionModel.document_id)
+                .where(
+                    ChunkModel.workspace_id == workspace_id,
+                    ChunkModel.id.in_(chunk_ids),
+                    DocumentVersionModel.workspace_id == workspace_id,
+                    DocumentVersionModel.status == DocumentVersionStatus.READY.value,
+                    DocumentVersionModel.active.is_(True),
+                    DocumentModel.workspace_id == workspace_id,
+                    DocumentModel.status == DocumentStatus.ACTIVE.value,
+                )
+            )
+        ).all()
+        return set(rows)
+
+    async def create_evaluation_dataset(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        name: str,
+        description: str | None,
+    ) -> EvaluationDatasetRecord:
+        dataset = EvaluationDatasetModel(
+            workspace_id=workspace_id,
+            created_by_user_id=actor.user_id,
+            name=name,
+            description=description,
+            status=EvaluationDatasetStatus.ACTIVE.value,
+        )
+        self._session.add(dataset)
+        await self._session.flush()
+        return self._evaluation_dataset_record(dataset, None, None)
+
+    async def list_evaluation_datasets(
+        self, workspace_id: uuid.UUID
+    ) -> list[EvaluationDatasetRecord]:
+        datasets = (
+            await self._session.scalars(
+                select(EvaluationDatasetModel)
+                .where(EvaluationDatasetModel.workspace_id == workspace_id)
+                .order_by(EvaluationDatasetModel.created_at.desc(), EvaluationDatasetModel.id.asc())
+            )
+        ).all()
+        records: list[EvaluationDatasetRecord] = []
+        for dataset in datasets:
+            latest = await self._latest_evaluation_dataset_version(dataset.id)
+            records.append(
+                self._evaluation_dataset_record(
+                    dataset,
+                    latest.id if latest is not None else None,
+                    latest.version_number if latest is not None else None,
+                )
+            )
+        return records
+
+    async def get_evaluation_dataset(
+        self, workspace_id: uuid.UUID, dataset_id: uuid.UUID
+    ) -> EvaluationDatasetRecord | None:
+        dataset = await self._session.scalar(
+            select(EvaluationDatasetModel).where(
+                EvaluationDatasetModel.workspace_id == workspace_id,
+                EvaluationDatasetModel.id == dataset_id,
+            )
+        )
+        if dataset is None:
+            return None
+        latest = await self._latest_evaluation_dataset_version(dataset.id)
+        return self._evaluation_dataset_record(
+            dataset,
+            latest.id if latest is not None else None,
+            latest.version_number if latest is not None else None,
+        )
+
+    async def create_evaluation_dataset_version(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        description: str | None,
+        config: dict[str, object],
+        content_digest: str,
+        cases: list[EvaluationCaseDraft],
+    ) -> EvaluationDatasetVersionRecord:
+        dataset = await self._session.scalar(
+            select(EvaluationDatasetModel).where(
+                EvaluationDatasetModel.workspace_id == workspace_id,
+                EvaluationDatasetModel.id == dataset_id,
+            )
+        )
+        if dataset is None:
+            raise ResourceNotFoundError()
+        latest = await self._latest_evaluation_dataset_version(dataset_id)
+        version = EvaluationDatasetVersionModel(
+            workspace_id=workspace_id,
+            dataset_id=dataset_id,
+            created_by_user_id=actor.user_id,
+            version_number=(latest.version_number + 1 if latest is not None else 1),
+            description=description,
+            case_count=len(cases),
+            content_digest=content_digest,
+            config=config,
+        )
+        self._session.add(version)
+        await self._session.flush()
+        case_models = []
+        for index, case in enumerate(cases, start=1):
+            model = EvaluationCaseModel(
+                workspace_id=workspace_id,
+                dataset_version_id=version.id,
+                ordinal=index,
+                query_text=case.query,
+                retrieval_mode=case.retrieval_mode,
+                top_k=case.top_k,
+                relevant_chunk_ids=[str(item) for item in case.relevant_chunk_ids],
+                expected_answer_substrings=case.expected_answer_substrings,
+                expected_citation_quotes=case.expected_citation_quotes,
+                slices=case.slices,
+                safe_metadata=case.metadata,
+            )
+            self._session.add(model)
+            case_models.append(model)
+        await self._session.flush()
+        return self._evaluation_dataset_version_record(version, case_models)
+
+    async def get_evaluation_dataset_version(
+        self, workspace_id: uuid.UUID, dataset_version_id: uuid.UUID
+    ) -> EvaluationDatasetVersionRecord | None:
+        version = await self._session.scalar(
+            select(EvaluationDatasetVersionModel).where(
+                EvaluationDatasetVersionModel.workspace_id == workspace_id,
+                EvaluationDatasetVersionModel.id == dataset_version_id,
+            )
+        )
+        if version is None:
+            return None
+        cases = (
+            await self._session.scalars(
+                select(EvaluationCaseModel)
+                .where(
+                    EvaluationCaseModel.workspace_id == workspace_id,
+                    EvaluationCaseModel.dataset_version_id == dataset_version_id,
+                )
+                .order_by(EvaluationCaseModel.ordinal.asc())
+            )
+        ).all()
+        return self._evaluation_dataset_version_record(version, list(cases))
+
+    async def create_evaluation_run(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        dataset_version_id: uuid.UUID,
+        run_name: str,
+        evaluation_config: dict[str, object],
+        metric_versions: dict[str, str],
+        code_revision: str,
+    ) -> EvaluationRunRecord:
+        run = EvaluationRunModel(
+            workspace_id=workspace_id,
+            dataset_version_id=dataset_version_id,
+            created_by_user_id=actor.user_id,
+            status=EvaluationRunStatus.FAILED.value,
+            run_name=run_name,
+            evaluation_config=evaluation_config,
+            metric_versions=metric_versions,
+            code_revision=code_revision,
+            aggregate_metrics={},
+            slice_metrics={},
+            failure_summary={},
+            total_cost_usd=0,
+            latency_ms=0,
+        )
+        self._session.add(run)
+        await self._session.flush()
+        return self._evaluation_run_record(run, [])
+
+    async def complete_evaluation_run(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        evaluation_run_id: uuid.UUID,
+        status: EvaluationRunStatus,
+        aggregate_metrics: dict[str, object],
+        slice_metrics: dict[str, object],
+        failure_summary: dict[str, object],
+        total_cost_usd: float,
+        latency_ms: int,
+        results: list[EvaluationResultRecord],
+    ) -> EvaluationRunRecord:
+        run = await self._session.scalar(
+            select(EvaluationRunModel).where(
+                EvaluationRunModel.workspace_id == workspace_id,
+                EvaluationRunModel.id == evaluation_run_id,
+            )
+        )
+        if run is None:
+            raise ResourceNotFoundError()
+        run.status = status.value
+        run.aggregate_metrics = aggregate_metrics
+        run.slice_metrics = slice_metrics
+        run.failure_summary = failure_summary
+        run.total_cost_usd = total_cost_usd
+        run.latency_ms = latency_ms
+        run.completed_at = datetime.now(UTC)
+        for result in results:
+            self._session.add(
+                EvaluationResultModel(
+                    id=result.id,
+                    workspace_id=workspace_id,
+                    evaluation_run_id=evaluation_run_id,
+                    evaluation_case_id=result.evaluation_case_id,
+                    answer_run_id=result.answer_run_id,
+                    status=result.status.value,
+                    metrics=result.metrics,
+                    retrieved_chunk_ids=[str(item) for item in result.retrieved_chunk_ids],
+                    error_code=result.error_code,
+                    error_message=result.error_message,
+                    latency_ms=result.latency_ms,
+                    total_cost_usd=result.total_cost_usd,
+                )
+            )
+        await self._session.flush()
+        loaded = await self.get_evaluation_run(workspace_id, evaluation_run_id)
+        if loaded is None:
+            raise ConflictError("The evaluation run could not be reloaded.")
+        return loaded
+
+    async def list_evaluation_runs(
+        self, workspace_id: uuid.UUID, *, limit: int
+    ) -> list[EvaluationRunRecord]:
+        runs = (
+            await self._session.scalars(
+                select(EvaluationRunModel)
+                .where(EvaluationRunModel.workspace_id == workspace_id)
+                .order_by(EvaluationRunModel.started_at.desc(), EvaluationRunModel.id.asc())
+                .limit(limit)
+            )
+        ).all()
+        records: list[EvaluationRunRecord] = []
+        for run in runs:
+            results = await self._evaluation_results_for_run(workspace_id, run.id)
+            records.append(self._evaluation_run_record(run, results))
+        return records
+
+    async def get_evaluation_run(
+        self, workspace_id: uuid.UUID, evaluation_run_id: uuid.UUID
+    ) -> EvaluationRunRecord | None:
+        run = await self._session.scalar(
+            select(EvaluationRunModel).where(
+                EvaluationRunModel.workspace_id == workspace_id,
+                EvaluationRunModel.id == evaluation_run_id,
+            )
+        )
+        if run is None:
+            return None
+        results = await self._evaluation_results_for_run(workspace_id, run.id)
+        return self._evaluation_run_record(run, results)
+
+    async def approve_evaluation_baseline(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        evaluation_run_id: uuid.UUID,
+        notes: str | None,
+    ) -> EvaluationBaselineRecord:
+        run = await self._session.scalar(
+            select(EvaluationRunModel).where(
+                EvaluationRunModel.workspace_id == workspace_id,
+                EvaluationRunModel.id == evaluation_run_id,
+                EvaluationRunModel.status == EvaluationRunStatus.SUCCEEDED.value,
+            )
+        )
+        if run is None:
+            raise ResourceNotFoundError()
+        version = await self._session.get(EvaluationDatasetVersionModel, run.dataset_version_id)
+        if version is None:
+            raise ResourceNotFoundError()
+        baseline = EvaluationBaselineModel(
+            workspace_id=workspace_id,
+            dataset_id=version.dataset_id,
+            dataset_version_id=version.id,
+            evaluation_run_id=run.id,
+            approved_by_user_id=actor.user_id,
+            notes=notes,
+        )
+        self._session.add(baseline)
+        await self._session.flush()
+        return EvaluationBaselineRecord(
+            id=baseline.id,
+            workspace_id=baseline.workspace_id,
+            dataset_id=baseline.dataset_id,
+            dataset_version_id=baseline.dataset_version_id,
+            evaluation_run_id=baseline.evaluation_run_id,
+            approved_by_user_id=baseline.approved_by_user_id,
+            notes=baseline.notes,
+            created_at=baseline.created_at,
+        )
+
     async def embedding_coverage(
         self, workspace_id: uuid.UUID, embedding_set_id: uuid.UUID
     ) -> EmbeddingCoverageRecord:
@@ -1544,6 +1873,130 @@ class SqlAlchemyDocumentStore:
             evidence=evidence,
             citations=citations,
             created_at=answer.created_at,
+        )
+
+    async def _latest_evaluation_dataset_version(
+        self, dataset_id: uuid.UUID
+    ) -> EvaluationDatasetVersionModel | None:
+        return cast(
+            EvaluationDatasetVersionModel | None,
+            await self._session.scalar(
+                select(EvaluationDatasetVersionModel)
+                .where(EvaluationDatasetVersionModel.dataset_id == dataset_id)
+                .order_by(EvaluationDatasetVersionModel.version_number.desc())
+                .limit(1)
+            ),
+        )
+
+    @staticmethod
+    def _evaluation_dataset_record(
+        dataset: EvaluationDatasetModel,
+        latest_version_id: uuid.UUID | None,
+        latest_version_number: int | None,
+    ) -> EvaluationDatasetRecord:
+        return EvaluationDatasetRecord(
+            id=dataset.id,
+            workspace_id=dataset.workspace_id,
+            name=dataset.name,
+            description=dataset.description,
+            status=EvaluationDatasetStatus(dataset.status),
+            latest_version_id=latest_version_id,
+            latest_version_number=latest_version_number,
+            created_at=dataset.created_at,
+        )
+
+    @staticmethod
+    def _evaluation_dataset_version_record(
+        version: EvaluationDatasetVersionModel,
+        case_rows: list[EvaluationCaseModel],
+    ) -> EvaluationDatasetVersionRecord:
+        return EvaluationDatasetVersionRecord(
+            id=version.id,
+            workspace_id=version.workspace_id,
+            dataset_id=version.dataset_id,
+            version_number=version.version_number,
+            description=version.description,
+            case_count=version.case_count,
+            content_digest=version.content_digest,
+            config=version.config,
+            cases=[
+                EvaluationCaseRecord(
+                    id=case.id,
+                    workspace_id=case.workspace_id,
+                    dataset_version_id=case.dataset_version_id,
+                    ordinal=case.ordinal,
+                    query=case.query_text,
+                    retrieval_mode=cast(
+                        Literal["semantic", "lexical", "hybrid"], case.retrieval_mode
+                    ),
+                    top_k=case.top_k,
+                    relevant_chunk_ids=[
+                        uuid.UUID(chunk_id) for chunk_id in case.relevant_chunk_ids
+                    ],
+                    expected_answer_substrings=list(case.expected_answer_substrings),
+                    expected_citation_quotes=list(case.expected_citation_quotes),
+                    slices=list(case.slices),
+                    metadata=case.safe_metadata,
+                )
+                for case in case_rows
+            ],
+            created_at=version.created_at,
+        )
+
+    async def _evaluation_results_for_run(
+        self, workspace_id: uuid.UUID, evaluation_run_id: uuid.UUID
+    ) -> list[EvaluationResultRecord]:
+        rows = (
+            await self._session.scalars(
+                select(EvaluationResultModel)
+                .where(
+                    EvaluationResultModel.workspace_id == workspace_id,
+                    EvaluationResultModel.evaluation_run_id == evaluation_run_id,
+                )
+                .order_by(EvaluationResultModel.created_at.asc(), EvaluationResultModel.id.asc())
+            )
+        ).all()
+        return [
+            EvaluationResultRecord(
+                id=row.id,
+                workspace_id=row.workspace_id,
+                evaluation_run_id=row.evaluation_run_id,
+                evaluation_case_id=row.evaluation_case_id,
+                status=EvaluationResultStatus(row.status),
+                metrics=row.metrics,
+                retrieved_chunk_ids=[uuid.UUID(chunk_id) for chunk_id in row.retrieved_chunk_ids],
+                answer_run_id=row.answer_run_id,
+                error_code=row.error_code,
+                error_message=row.error_message,
+                latency_ms=row.latency_ms,
+                total_cost_usd=row.total_cost_usd,
+                created_at=row.created_at,
+            )
+            for row in rows
+        ]
+
+    @staticmethod
+    def _evaluation_run_record(
+        run: EvaluationRunModel, results: list[EvaluationResultRecord]
+    ) -> EvaluationRunRecord:
+        return EvaluationRunRecord(
+            id=run.id,
+            workspace_id=run.workspace_id,
+            dataset_version_id=run.dataset_version_id,
+            created_by_user_id=run.created_by_user_id,
+            status=EvaluationRunStatus(run.status),
+            run_name=run.run_name,
+            evaluation_config=run.evaluation_config,
+            metric_versions=run.metric_versions,
+            code_revision=run.code_revision,
+            aggregate_metrics=run.aggregate_metrics,
+            slice_metrics=run.slice_metrics,
+            failure_summary=run.failure_summary,
+            total_cost_usd=run.total_cost_usd,
+            latency_ms=run.latency_ms,
+            started_at=run.started_at,
+            completed_at=run.completed_at,
+            results=results,
         )
 
     @staticmethod

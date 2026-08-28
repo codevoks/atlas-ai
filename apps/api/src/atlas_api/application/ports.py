@@ -14,6 +14,9 @@ from atlas_api.domain.models import (
     DocumentStatus,
     DocumentVersionStatus,
     EmbeddingSetStatus,
+    EvaluationDatasetStatus,
+    EvaluationResultStatus,
+    EvaluationRunStatus,
     IngestionJobState,
     MembershipContext,
     Role,
@@ -318,6 +321,102 @@ class AnswerRunRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class EvaluationDatasetRecord:
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    name: str
+    description: str | None
+    status: EvaluationDatasetStatus
+    latest_version_id: uuid.UUID | None
+    latest_version_number: int | None
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationCaseDraft:
+    query: str
+    retrieval_mode: Literal["semantic", "lexical", "hybrid"]
+    top_k: int
+    relevant_chunk_ids: list[uuid.UUID]
+    expected_answer_substrings: list[str]
+    expected_citation_quotes: list[str]
+    slices: list[str]
+    metadata: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationCaseRecord(EvaluationCaseDraft):
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    dataset_version_id: uuid.UUID
+    ordinal: int
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationDatasetVersionRecord:
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    dataset_id: uuid.UUID
+    version_number: int
+    description: str | None
+    case_count: int
+    content_digest: str
+    config: dict[str, object]
+    cases: list[EvaluationCaseRecord]
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationResultRecord:
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    evaluation_run_id: uuid.UUID
+    evaluation_case_id: uuid.UUID
+    status: EvaluationResultStatus
+    metrics: dict[str, object]
+    retrieved_chunk_ids: list[uuid.UUID]
+    answer_run_id: uuid.UUID | None
+    error_code: str | None
+    error_message: str | None
+    latency_ms: int
+    total_cost_usd: float
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationRunRecord:
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    dataset_version_id: uuid.UUID
+    created_by_user_id: uuid.UUID
+    status: EvaluationRunStatus
+    run_name: str
+    evaluation_config: dict[str, object]
+    metric_versions: dict[str, str]
+    code_revision: str
+    aggregate_metrics: dict[str, object]
+    slice_metrics: dict[str, object]
+    failure_summary: dict[str, object]
+    total_cost_usd: float
+    latency_ms: int
+    started_at: datetime
+    completed_at: datetime | None
+    results: list[EvaluationResultRecord]
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationBaselineRecord:
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    dataset_id: uuid.UUID
+    dataset_version_id: uuid.UUID
+    evaluation_run_id: uuid.UUID
+    approved_by_user_id: uuid.UUID
+    notes: str | None
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class IngestionJobRecord:
     id: uuid.UUID
     workspace_id: uuid.UUID
@@ -536,6 +635,86 @@ class DocumentStore(Protocol):
         workspace_id: uuid.UUID,
         answer_run_id: uuid.UUID,
     ) -> AnswerRunRecord | None: ...
+
+    async def validate_ready_chunk_ids(
+        self, workspace_id: uuid.UUID, chunk_ids: list[uuid.UUID]
+    ) -> set[uuid.UUID]: ...
+
+    async def create_evaluation_dataset(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        name: str,
+        description: str | None,
+    ) -> EvaluationDatasetRecord: ...
+
+    async def list_evaluation_datasets(
+        self, workspace_id: uuid.UUID
+    ) -> list[EvaluationDatasetRecord]: ...
+
+    async def get_evaluation_dataset(
+        self, workspace_id: uuid.UUID, dataset_id: uuid.UUID
+    ) -> EvaluationDatasetRecord | None: ...
+
+    async def create_evaluation_dataset_version(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        description: str | None,
+        config: dict[str, object],
+        content_digest: str,
+        cases: list[EvaluationCaseDraft],
+    ) -> EvaluationDatasetVersionRecord: ...
+
+    async def get_evaluation_dataset_version(
+        self, workspace_id: uuid.UUID, dataset_version_id: uuid.UUID
+    ) -> EvaluationDatasetVersionRecord | None: ...
+
+    async def create_evaluation_run(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        dataset_version_id: uuid.UUID,
+        run_name: str,
+        evaluation_config: dict[str, object],
+        metric_versions: dict[str, str],
+        code_revision: str,
+    ) -> EvaluationRunRecord: ...
+
+    async def complete_evaluation_run(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        evaluation_run_id: uuid.UUID,
+        status: EvaluationRunStatus,
+        aggregate_metrics: dict[str, object],
+        slice_metrics: dict[str, object],
+        failure_summary: dict[str, object],
+        total_cost_usd: float,
+        latency_ms: int,
+        results: list[EvaluationResultRecord],
+    ) -> EvaluationRunRecord: ...
+
+    async def list_evaluation_runs(
+        self, workspace_id: uuid.UUID, *, limit: int
+    ) -> list[EvaluationRunRecord]: ...
+
+    async def get_evaluation_run(
+        self, workspace_id: uuid.UUID, evaluation_run_id: uuid.UUID
+    ) -> EvaluationRunRecord | None: ...
+
+    async def approve_evaluation_baseline(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        evaluation_run_id: uuid.UUID,
+        notes: str | None,
+    ) -> EvaluationBaselineRecord: ...
 
 
 class Transaction(Protocol):

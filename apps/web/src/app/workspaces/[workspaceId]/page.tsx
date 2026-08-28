@@ -20,6 +20,7 @@ import {
   getDocumentChunks,
   getDocumentVersions,
   getDocuments,
+  getEvaluationRuns,
   getIngestionJob,
   getMe,
   getMembers,
@@ -48,13 +49,15 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
   let members;
   let sources;
   let documents;
+  let evaluationRuns;
   try {
-    [me, workspace, members, sources, documents] = await Promise.all([
+    [me, workspace, members, sources, documents, evaluationRuns] = await Promise.all([
       getMe(),
       getWorkspace(workspaceId),
       getMembers(workspaceId),
       getSources(workspaceId),
       getDocuments(workspaceId),
+      getEvaluationRuns(workspaceId),
     ]);
   } catch (requestError) {
     if (requestError instanceof AtlasApiError && requestError.status === 401) redirect("/sign-in");
@@ -196,6 +199,63 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
           ) : (
             <p className="muted">
               Ask a question and Atlas will answer only from retrieved workspace evidence.
+            </p>
+          )}
+        </section>
+
+        <section className="search-panel">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Evaluation</p>
+              <h2>Latest regression runs</h2>
+            </div>
+            <span className="count">{evaluationRuns.length}</span>
+          </div>
+          {evaluationRuns.length > 0 ? (
+            <div className="search-results">
+              {evaluationRuns.map((run) => (
+                <article className="search-result" key={run.id}>
+                  <div>
+                    <strong>{run.run_name}</strong>
+                    <small>
+                      {run.status} · {run.results.length} cases · $
+                      {run.total_cost_usd.toFixed(2)}
+                    </small>
+                  </div>
+                  <div className="metric-grid">
+                    <span>
+                      Recall@K
+                      <strong>{formatMetric(nestedMetric(run.aggregate_metrics, "retrieval", "recall_at_k"))}</strong>
+                    </span>
+                    <span>
+                      MRR
+                      <strong>{formatMetric(nestedMetric(run.aggregate_metrics, "retrieval", "mrr"))}</strong>
+                    </span>
+                    <span>
+                      Citation verified
+                      <strong>{formatMetric(nestedMetric(run.aggregate_metrics, "answer", "citation_verified_rate"))}</strong>
+                    </span>
+                  </div>
+                  <small className="mono">
+                    run {run.id} · dataset {run.dataset_version_id} · code {run.code_revision} ·{" "}
+                    {run.latency_ms}ms
+                  </small>
+                  {run.results.map((result, index) => (
+                    <small className="mono" key={result.id}>
+                      case {index + 1}: {result.status} · retrieved{" "}
+                      {result.retrieved_chunk_ids.length} chunks · answer{" "}
+                      {result.answer_run_id ?? "none"}
+                    </small>
+                  ))}
+                  {Object.keys(run.failure_summary).length > 0 ? (
+                    <p className="alert">Failures: {JSON.stringify(run.failure_summary)}</p>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="muted">
+              No evaluation runs yet. Create a versioned dataset and launch a local deterministic run from the API.
             </p>
           )}
         </section>
@@ -444,4 +504,19 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
       </section>
     </main>
   );
+}
+
+function nestedMetric(
+  metrics: Record<string, unknown>,
+  category: string,
+  name: string,
+): number | null {
+  const group = metrics[category];
+  if (!group || typeof group !== "object" || Array.isArray(group)) return null;
+  const value = (group as Record<string, unknown>)[name];
+  return typeof value === "number" ? value : null;
+}
+
+function formatMetric(value: number | null): string {
+  return value === null ? "—" : value.toFixed(3);
 }

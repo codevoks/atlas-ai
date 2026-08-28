@@ -112,6 +112,24 @@ class CitationValidationStatus(StrEnum):
     REJECTED = "rejected"
 
 
+class EvaluationDatasetStatus(StrEnum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class EvaluationRunStatus(StrEnum):
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    PARTIAL = "partial"
+
+
+class EvaluationResultStatus(StrEnum):
+    SUCCEEDED = "succeeded"
+    SYSTEM_FAILED = "system_failed"
+    METRIC_FAILED = "metric_failed"
+    MISSING_LABELS = "missing_labels"
+
+
 @dataclass(frozen=True, slots=True)
 class IdentityClaims:
     issuer: str

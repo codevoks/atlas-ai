@@ -22,6 +22,8 @@ async def client() -> AsyncIterator[AsyncClient]:
             await connection.execute(
                 text(
                     "TRUNCATE chunks, job_events, ingestion_jobs, document_versions, documents, "
+                    "evaluation_baselines, evaluation_results, evaluation_runs, "
+                    "evaluation_cases, evaluation_dataset_versions, evaluation_datasets, "
                     "citations, answer_evidence, answer_runs, "
                     "chunk_embeddings, embedding_sets, upload_intents, sources, "
                     "idempotency_records, audit_events, "

@@ -12,6 +12,13 @@ from atlas_api.application.ports import (
     DocumentRecord,
     DocumentVersionRecord,
     EmbeddingBackfillResult,
+    EvaluationBaselineRecord,
+    EvaluationCaseDraft,
+    EvaluationCaseRecord,
+    EvaluationDatasetRecord,
+    EvaluationDatasetVersionRecord,
+    EvaluationResultRecord,
+    EvaluationRunRecord,
     IngestionJobRecord,
     MemberRecord,
     SearchCandidate,
@@ -569,6 +576,236 @@ class AnswerResponse(BaseModel):
             latency_ms=record.latency_ms,
             evidence=[AnswerEvidenceResponse.from_record(item) for item in record.evidence],
             citations=[CitationResponse.from_record(item) for item in record.citations],
+            created_at=record.created_at.isoformat(),
+        )
+
+
+class EvaluationDatasetCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=160)
+    description: str | None = Field(default=None, max_length=1_000)
+
+
+class EvaluationDatasetResponse(BaseModel):
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    name: str
+    description: str | None
+    status: str
+    latest_version_id: uuid.UUID | None
+    latest_version_number: int | None
+    created_at: str
+
+    @classmethod
+    def from_record(cls, record: EvaluationDatasetRecord) -> EvaluationDatasetResponse:
+        return cls(
+            id=record.id,
+            workspace_id=record.workspace_id,
+            name=record.name,
+            description=record.description,
+            status=record.status.value,
+            latest_version_id=record.latest_version_id,
+            latest_version_number=record.latest_version_number,
+            created_at=record.created_at.isoformat(),
+        )
+
+
+class EvaluationDatasetListResponse(BaseModel):
+    items: list[EvaluationDatasetResponse]
+
+
+class EvaluationCaseCreate(BaseModel):
+    query: str = Field(min_length=1, max_length=4_000)
+    retrieval_mode: Literal["semantic", "lexical", "hybrid"] = "hybrid"
+    top_k: int = Field(default=5, ge=1, le=20)
+    relevant_chunk_ids: list[uuid.UUID] = Field(min_length=1, max_length=20)
+    expected_answer_substrings: list[str] = Field(default_factory=list, max_length=10)
+    expected_citation_quotes: list[str] = Field(default_factory=list, max_length=10)
+    slices: list[str] = Field(default_factory=lambda: ["default"], max_length=10)
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+    def to_draft(self) -> EvaluationCaseDraft:
+        return EvaluationCaseDraft(
+            query=self.query,
+            retrieval_mode=self.retrieval_mode,
+            top_k=self.top_k,
+            relevant_chunk_ids=self.relevant_chunk_ids,
+            expected_answer_substrings=self.expected_answer_substrings,
+            expected_citation_quotes=self.expected_citation_quotes,
+            slices=self.slices,
+            metadata=self.metadata,
+        )
+
+
+class EvaluationDatasetVersionCreate(BaseModel):
+    description: str | None = Field(default=None, max_length=1_000)
+    cases: list[EvaluationCaseCreate] = Field(min_length=1, max_length=50)
+
+
+class EvaluationCaseResponse(BaseModel):
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    dataset_version_id: uuid.UUID
+    ordinal: int
+    query: str
+    retrieval_mode: str
+    top_k: int
+    relevant_chunk_ids: list[uuid.UUID]
+    expected_answer_substrings: list[str]
+    expected_citation_quotes: list[str]
+    slices: list[str]
+    metadata: dict[str, object]
+
+    @classmethod
+    def from_record(cls, record: EvaluationCaseRecord) -> EvaluationCaseResponse:
+        return cls(
+            id=record.id,
+            workspace_id=record.workspace_id,
+            dataset_version_id=record.dataset_version_id,
+            ordinal=record.ordinal,
+            query=record.query,
+            retrieval_mode=record.retrieval_mode,
+            top_k=record.top_k,
+            relevant_chunk_ids=record.relevant_chunk_ids,
+            expected_answer_substrings=record.expected_answer_substrings,
+            expected_citation_quotes=record.expected_citation_quotes,
+            slices=record.slices,
+            metadata=record.metadata,
+        )
+
+
+class EvaluationDatasetVersionResponse(BaseModel):
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    dataset_id: uuid.UUID
+    version_number: int
+    description: str | None
+    case_count: int
+    content_digest: str
+    config: dict[str, object]
+    cases: list[EvaluationCaseResponse]
+    created_at: str
+
+    @classmethod
+    def from_record(
+        cls, record: EvaluationDatasetVersionRecord
+    ) -> EvaluationDatasetVersionResponse:
+        return cls(
+            id=record.id,
+            workspace_id=record.workspace_id,
+            dataset_id=record.dataset_id,
+            version_number=record.version_number,
+            description=record.description,
+            case_count=record.case_count,
+            content_digest=record.content_digest,
+            config=record.config,
+            cases=[EvaluationCaseResponse.from_record(item) for item in record.cases],
+            created_at=record.created_at.isoformat(),
+        )
+
+
+class EvaluationRunCreate(BaseModel):
+    dataset_version_id: uuid.UUID
+    run_name: str = Field(min_length=2, max_length=160)
+
+
+class EvaluationResultResponse(BaseModel):
+    id: uuid.UUID
+    evaluation_case_id: uuid.UUID
+    status: str
+    metrics: dict[str, object]
+    retrieved_chunk_ids: list[uuid.UUID]
+    answer_run_id: uuid.UUID | None
+    error_code: str | None
+    error_message: str | None
+    latency_ms: int
+    total_cost_usd: float
+    created_at: str
+
+    @classmethod
+    def from_record(cls, record: EvaluationResultRecord) -> EvaluationResultResponse:
+        return cls(
+            id=record.id,
+            evaluation_case_id=record.evaluation_case_id,
+            status=record.status.value,
+            metrics=record.metrics,
+            retrieved_chunk_ids=record.retrieved_chunk_ids,
+            answer_run_id=record.answer_run_id,
+            error_code=record.error_code,
+            error_message=record.error_message,
+            latency_ms=record.latency_ms,
+            total_cost_usd=record.total_cost_usd,
+            created_at=record.created_at.isoformat(),
+        )
+
+
+class EvaluationRunResponse(BaseModel):
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    dataset_version_id: uuid.UUID
+    status: str
+    run_name: str
+    evaluation_config: dict[str, object]
+    metric_versions: dict[str, str]
+    code_revision: str
+    aggregate_metrics: dict[str, object]
+    slice_metrics: dict[str, object]
+    failure_summary: dict[str, object]
+    total_cost_usd: float
+    latency_ms: int
+    started_at: str
+    completed_at: str | None
+    results: list[EvaluationResultResponse]
+
+    @classmethod
+    def from_record(cls, record: EvaluationRunRecord) -> EvaluationRunResponse:
+        return cls(
+            id=record.id,
+            workspace_id=record.workspace_id,
+            dataset_version_id=record.dataset_version_id,
+            status=record.status.value,
+            run_name=record.run_name,
+            evaluation_config=record.evaluation_config,
+            metric_versions=record.metric_versions,
+            code_revision=record.code_revision,
+            aggregate_metrics=record.aggregate_metrics,
+            slice_metrics=record.slice_metrics,
+            failure_summary=record.failure_summary,
+            total_cost_usd=record.total_cost_usd,
+            latency_ms=record.latency_ms,
+            started_at=record.started_at.isoformat(),
+            completed_at=record.completed_at.isoformat() if record.completed_at else None,
+            results=[EvaluationResultResponse.from_record(item) for item in record.results],
+        )
+
+
+class EvaluationRunListResponse(BaseModel):
+    items: list[EvaluationRunResponse]
+
+
+class EvaluationBaselineApprove(BaseModel):
+    notes: str | None = Field(default=None, max_length=1_000)
+
+
+class EvaluationBaselineResponse(BaseModel):
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    dataset_id: uuid.UUID
+    dataset_version_id: uuid.UUID
+    evaluation_run_id: uuid.UUID
+    approved_by_user_id: uuid.UUID
+    notes: str | None
+    created_at: str
+
+    @classmethod
+    def from_record(cls, record: EvaluationBaselineRecord) -> EvaluationBaselineResponse:
+        return cls(
+            id=record.id,
+            workspace_id=record.workspace_id,
+            dataset_id=record.dataset_id,
+            dataset_version_id=record.dataset_version_id,
+            evaluation_run_id=record.evaluation_run_id,
+            approved_by_user_id=record.approved_by_user_id,
+            notes=record.notes,
             created_at=record.created_at.isoformat(),
         )
 

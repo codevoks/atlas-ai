@@ -1,10 +1,10 @@
 # Atlas AI
 
-Atlas AI is a production-grade enterprise knowledge and RAG SaaS built through explicit engineering phases. The repository currently contains the Phase 6 foundation: monorepo tooling, web/API/worker service boundaries, authentication seams, workspace tenancy, RBAC, idempotent workspace creation, audit events, source/document metadata, signed local upload intents, durable ingestion jobs, deterministic parsing and chunking for supported text formats, deterministic local embeddings, PostgreSQL lexical retrieval, tenant-safe semantic and hybrid evidence retrieval, deterministic grounded answers with verified citations, normalized derived artifacts, parser/chunker/embedding/retrieval/generation provenance, and generated OpenAPI-to-TypeScript contracts.
+Atlas AI is a production-grade enterprise knowledge and RAG SaaS built through explicit engineering phases. The repository currently contains the Phase 7 foundation: monorepo tooling, web/API/worker service boundaries, authentication seams, workspace tenancy, RBAC, idempotent workspace creation, audit events, source/document metadata, signed local upload intents, durable ingestion jobs, deterministic parsing and chunking for supported text formats, deterministic local embeddings, PostgreSQL lexical retrieval, tenant-safe semantic and hybrid evidence retrieval, deterministic grounded answers with verified citations, versioned evaluation datasets, deterministic offline RAG evaluation runs, normalized derived artifacts, parser/chunker/embedding/retrieval/generation/evaluation provenance, and generated OpenAPI-to-TypeScript contracts.
 
 ## Current phase
 
-Phase 6 — grounded answers and citation integrity.
+Phase 7 — retrieval and RAG evaluation platform.
 
 Implemented:
 
@@ -27,16 +27,20 @@ Implemented:
 - PostgreSQL full-text lexical index and deterministic RRF fusion with branch rank diagnostics
 - deterministic local grounded answer generation with verified source-span citations
 - persisted answer runs, answer evidence, citations, prompt/model/config provenance, token/latency/cost metadata, and no hosted provider calls
+- versioned evaluation datasets and immutable dataset versions with labeled cases
+- deterministic offline retrieval/answer evaluation runs using production retrieval and answer services
+- Recall@K, Precision@K, MRR, NDCG, answer coverage, citation coverage, and citation verification metrics with metric-version provenance
+- evaluation run persistence, aggregate metrics, slice metrics, failure summaries, run listing UI, and auditable baseline approval
 - version, chunk, and evidence API responses with safe parser/chunker/embedding provenance and counts
 - OpenAPI contract export and generated TypeScript types
 
 Deferred:
 
-- optional production S3-compatible storage, malware scanning, broad office/PDF/OCR parsing, pgvector ANN indexing, learned fusion, hosted reranking/generation, advanced citation analysis, evaluation, agents, production cloud, billing, SAML/SCIM, and fine-grained document ACLs
+- optional production S3-compatible storage, malware scanning, broad office/PDF/OCR parsing, pgvector ANN indexing, learned fusion, hosted reranking/generation, advanced citation analysis, hosted/LLM-judge evaluation, agents, production cloud, billing, SAML/SCIM, and fine-grained document ACLs
 
 ## Zero-cost local path
 
-Atlas must remain buildable, testable, and demonstrable without paid SaaS, cloud resources, domains, or paid model APIs. The current Phase 6 path uses local Docker/PostgreSQL, deterministic development auth, a filesystem-backed object-store adapter, local API/web/worker services, deterministic parser/chunker/embedding behavior, PostgreSQL full-text search, exact semantic search over stored normalized vectors, RRF hybrid fusion, deterministic local generation, verified citation validation, and no hosted model-provider calls.
+Atlas must remain buildable, testable, and demonstrable without paid SaaS, cloud resources, domains, or paid model APIs. The current Phase 7 path uses local Docker/PostgreSQL, deterministic development auth, a filesystem-backed object-store adapter, local API/web/worker services, deterministic parser/chunker/embedding behavior, PostgreSQL full-text search, exact semantic search over stored normalized vectors, RRF hybrid fusion, deterministic local generation, verified citation validation, deterministic local evaluation metrics, and no hosted model-provider calls.
 
 Future cloud, managed observability, hosted search, and model-provider integrations are optional production adapters. They must be explicitly enabled and must not run or provision billable resources as part of the default setup, tests, or demo.
 
@@ -95,4 +99,5 @@ The web app uses deterministic development sign-in locally. Production must use 
 - `docs/phase-4-completion.md` — Phase 4 implementation and validation summary
 - `docs/phase-5-completion.md` — Phase 5 implementation and validation summary
 - `docs/phase-6-completion.md` — Phase 6 implementation and validation summary
+- `docs/phase-7-completion.md` — Phase 7 implementation and validation summary
 - `docs/phases/` — implementation contracts for each phase
