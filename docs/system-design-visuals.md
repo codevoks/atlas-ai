@@ -464,7 +464,39 @@ flowchart TB
 
 Expected labels are intentionally separated from the production retrieval and answer path. They are consumed only by the metric layer after the system-under-test has produced outputs, which prevents expected-answer leakage and keeps evaluation evidence meaningful.
 
-## 6. Evidence-driven scale evolution
+## 6. Phase 8 evidence-gated query expansion
+
+```mermaid
+flowchart TB
+    Client[Search, answer, or evaluation request] --> Config{Retrieval config}
+    Config -->|phase5 baseline| Original[Original query only]
+    Config -->|phase8 candidate| Transform[Deterministic query transformer]
+    Transform --> Guard{Injection-like text?}
+    Guard -->|yes| Original
+    Guard -->|no| Variants[Bounded query variants\nmax 3]
+    Original --> Plan[Retrieval plan executor]
+    Variants --> Plan
+    Plan --> Budget[Fan-out budget\nmax 6 branch queries]
+    Budget --> Sem[Semantic branches\nsame tenant filters]
+    Budget --> Lex[Lexical branches\nsame tenant filters]
+    Sem --> Aggregate[Dedup + RRF/best-score\n+ optional diversity]
+    Lex --> Aggregate
+    Aggregate --> Evidence[Typed evidence\nwith query-variant provenance]
+    Evidence --> Answer[Grounded answer\nor evaluation metrics]
+    Evidence --> Ablation[Phase 7 evaluation run\nbaseline vs candidate]
+    Ablation --> Decision{Measured slice benefit\nwithout unsafe tradeoff?}
+    Decision -->|yes| Keep[Config remains enabled]
+    Decision -->|no| Rollback[Use baseline config]
+
+    classDef trusted fill:var(--viz-series-1),color:var(--foreground),stroke:var(--border);
+    classDef untrusted fill:var(--viz-series-2),color:var(--foreground),stroke:var(--border);
+    class Config,Transform,Guard,Plan,Budget,Aggregate,Decision trusted;
+    class Client,Sem,Lex,Evidence,Answer,Ablation untrusted;
+```
+
+The Phase 8 transformer changes only query text used for candidate generation. It does not change workspace membership, source/document filters, citation validation, or generation policy. The baseline configuration remains available for rollback and comparison.
+
+## 7. Evidence-driven scale evolution
 
 ```mermaid
 flowchart LR

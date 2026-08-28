@@ -484,6 +484,9 @@ class AnswerEvidenceModel(Base):
     semantic_score: Mapped[float | None] = mapped_column(nullable=True)
     lexical_score: Mapped[float | None] = mapped_column(nullable=True)
     rrf_score: Mapped[float | None] = mapped_column(nullable=True)
+    retrieval_provenance: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
     quote: Mapped[str] = mapped_column(Text, nullable=False)
     start_char: Mapped[int] = mapped_column(Integer, nullable=False)
     end_char: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -593,6 +596,7 @@ class EvaluationCaseModel(Base):
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
     query_text: Mapped[str] = mapped_column(Text, nullable=False)
     retrieval_mode: Mapped[str] = mapped_column(String(30), nullable=False)
+    retrieval_config_version: Mapped[str] = mapped_column(String(100), nullable=False)
     top_k: Mapped[int] = mapped_column(Integer, nullable=False)
     relevant_chunk_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     expected_answer_substrings: Mapped[list[str]] = mapped_column(

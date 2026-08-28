@@ -27,15 +27,18 @@ import {
   getSources,
   getWorkspace,
   searchEvidence,
+  type RetrievalConfigVersion,
   type SearchMode,
 } from "@/lib/api";
 
 interface WorkspacePageProps {
   params: Promise<{ workspaceId: string }>;
   searchParams: Promise<{
+    answerConfig?: string;
     answerMode?: string;
     answerQuery?: string;
     error?: string;
+    searchConfig?: string;
     semanticQuery?: string;
     searchMode?: string;
   }>;
@@ -43,7 +46,8 @@ interface WorkspacePageProps {
 
 export default async function WorkspacePage({ params, searchParams }: WorkspacePageProps) {
   const { workspaceId } = await params;
-  const { answerMode, answerQuery, error, semanticQuery, searchMode } = await searchParams;
+  const { answerConfig, answerMode, answerQuery, error, searchConfig, semanticQuery, searchMode } =
+    await searchParams;
   let me;
   let workspace;
   let members;
@@ -99,7 +103,12 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
       ? searchMode
       : "hybrid";
   const semanticResults = cleanSemanticQuery
-    ? await searchEvidence(workspaceId, cleanSemanticQuery, selectedSearchMode)
+    ? await searchEvidence(
+        workspaceId,
+        cleanSemanticQuery,
+        selectedSearchMode,
+        selectedRetrievalConfig(searchConfig),
+      )
     : null;
   const cleanAnswerQuery = answerQuery ? answerQuery.split(/\s+/).join(" ").slice(0, 4000) : "";
   const selectedAnswerMode: SearchMode =
@@ -107,7 +116,12 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
       ? answerMode
       : "hybrid";
   const answerResult = cleanAnswerQuery
-    ? await answerQuestion(workspaceId, cleanAnswerQuery, selectedAnswerMode)
+    ? await answerQuestion(
+        workspaceId,
+        cleanAnswerQuery,
+        selectedAnswerMode,
+        selectedRetrievalConfig(answerConfig),
+      )
     : null;
 
   return (
@@ -155,6 +169,17 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
               <option value="lexical">Lexical</option>
               <option value="semantic">Semantic</option>
             </select>
+            <label className="sr-only" htmlFor="answer-config">Answer retrieval config</label>
+            <select
+              id="answer-config"
+              name="answerConfig"
+              defaultValue={selectedRetrievalConfig(answerConfig)}
+            >
+              <option value="phase5-postgres-fts-rrf-v1">Baseline RRF</option>
+              <option value="phase8-multi-query-expansion-v1">
+                Phase 8 multi-query expansion
+              </option>
+            </select>
             <button className="button primary" type="submit">Generate answer</button>
           </form>
           {answerResult ? (
@@ -174,7 +199,8 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
                 </div>
                 <p>{answerResult.answer_text}</p>
                 <small className="mono">
-                  run {answerResult.id} · prompt {answerResult.prompt_version}
+                  run {answerResult.id} · config {answerResult.retrieval_config_version} · prompt{" "}
+                  {answerResult.prompt_version}
                 </small>
               </article>
               {answerResult.citations.map((citation) => (
@@ -283,6 +309,17 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
               <option value="lexical">Lexical</option>
               <option value="semantic">Semantic</option>
             </select>
+            <label className="sr-only" htmlFor="search-config">Search retrieval config</label>
+            <select
+              id="search-config"
+              name="searchConfig"
+              defaultValue={selectedRetrievalConfig(searchConfig)}
+            >
+              <option value="phase5-postgres-fts-rrf-v1">Baseline RRF</option>
+              <option value="phase8-multi-query-expansion-v1">
+                Phase 8 multi-query expansion
+              </option>
+            </select>
             <button className="button primary" type="submit">Search evidence</button>
           </form>
           {semanticResults ? (
@@ -291,6 +328,17 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
                 {semanticResults.mode} retrieval · {semanticResults.retrieval_config_version} · trace{" "}
                 {semanticResults.trace_id}
               </p>
+              {semanticResults.debug?.retrieval_plan ? (
+                <article className="search-result">
+                  <div>
+                    <strong>Retrieval plan</strong>
+                    <small>{String(semanticResults.retrieval_config_version)}</small>
+                  </div>
+                  <small className="mono">
+                    {retrievalPlanSummary(semanticResults.debug.retrieval_plan)}
+                  </small>
+                </article>
+              ) : null}
               {semanticResults.items.map((item) => (
                 <article className="search-result" key={item.chunk_id}>
                   <div>
@@ -304,6 +352,9 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
                   <small>
                     semantic rank {item.semantic_rank ?? "—"} · lexical rank{" "}
                     {item.lexical_rank ?? "—"} · RRF {item.rrf_score?.toFixed(3) ?? "—"}
+                  </small>
+                  <small className="mono">
+                    variants {matchedVariants(item.retrieval_provenance).join(" | ") || "baseline"}
                   </small>
                   <small className="mono">
                     {item.embedding_model
@@ -519,4 +570,31 @@ function nestedMetric(
 
 function formatMetric(value: number | null): string {
   return value === null ? "—" : value.toFixed(3);
+}
+
+function selectedRetrievalConfig(value: string | undefined): RetrievalConfigVersion {
+  return value === "phase8-multi-query-expansion-v1"
+    ? "phase8-multi-query-expansion-v1"
+    : "phase5-postgres-fts-rrf-v1";
+}
+
+function retrievalPlanSummary(plan: unknown): string {
+  if (!plan || typeof plan !== "object" || Array.isArray(plan)) return "No plan details";
+  const record = plan as Record<string, unknown>;
+  const variants = Array.isArray(record.variants) ? record.variants : [];
+  const rendered = variants
+    .map((variant) => {
+      if (!variant || typeof variant !== "object" || Array.isArray(variant)) return null;
+      const item = variant as Record<string, unknown>;
+      return `${String(item.rank ?? "?")}: ${String(item.text ?? "")}`;
+    })
+    .filter((item): item is string => Boolean(item));
+  return rendered.join(" · ") || "No query variants";
+}
+
+function matchedVariants(provenance: Record<string, unknown>): string[] {
+  const value = provenance.matched_query_variants;
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
 }

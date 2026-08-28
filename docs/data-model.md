@@ -45,7 +45,7 @@ Workspace --< AuditEvent
 - At most one version per document is active/published. A version can be published only after all configured mandatory stages succeed.
 - Deletion prevents new reads immediately from the source of truth and propagates tombstones to derived indexes/caches asynchronously.
 
-Phase 7 implemented tables and indexes:
+Phase 8 implemented tables and indexes:
 
 - `sources`: workspace-scoped upload source registry with active/disabled state.
 - `upload_intents`: tenant-prefixed object key, creator, declared filename, media type, byte size, digest, expiry, lifecycle status, and finalized document-version reference.
@@ -58,11 +58,11 @@ Phase 7 implemented tables and indexes:
 - `chunk_embeddings`: one normalized vector per `(chunk_id, embedding_set_id)` with status and token count. Phase 4 stores vectors as PostgreSQL JSONB for the zero-cost exact-cosine baseline; pgvector ANN indexes remain an evidence-gated migration.
 - `ix_chunks_fts_english`: a PostgreSQL GIN expression index on `to_tsvector('english', chunks.text)` for the zero-cost lexical retrieval baseline. It is a derived access path over already-authorized chunk text, not a new authoritative data store.
 - `answer_runs`: workspace/user-scoped answer execution record with query, answer text, status, retrieval config, generation provider/model/version, prompt version, grounding status, warnings, context config, token counts, zero-cost amount, latency, and timestamps.
-- `answer_evidence`: immutable evidence snapshot per answer run, including chunk/document/version/source identities, retrieval stage and scores, context rank, quote text, and source span.
+- `answer_evidence`: immutable evidence snapshot per answer run, including chunk/document/version/source identities, retrieval stage and scores, context rank, quote text, source span, and retrieval-plan/query-variant provenance.
 - `citations`: validated answer marker to answer-evidence reference with answer span, evidence span, quote, and validation status.
 - `evaluation_datasets`: workspace-scoped named evaluation dataset registry with lifecycle status and owner metadata.
 - `evaluation_dataset_versions`: immutable dataset revisions with content digest, case count, config snapshot, and creator metadata.
-- `evaluation_cases`: labeled offline test cases with query, search/answer mode, top-k, relevant chunk labels, expected answer fragments, expected citation quotes, slice metadata, and optional reviewer labels.
+- `evaluation_cases`: labeled offline test cases with query, search/answer mode, retrieval configuration version, top-k, relevant chunk labels, expected answer fragments, expected citation quotes, slice metadata, and optional reviewer labels.
 - `evaluation_runs`: reproducible evaluation execution lineage with dataset/config/code revision, metric versions, aggregate metrics, slice metrics, failure summary, zero-cost amount, latency, and status.
 - `evaluation_results`: per-case retrieval and answer outputs, retrieved chunk IDs, answer-run link, deterministic metrics, error metadata, zero-cost amount, and latency.
 - `evaluation_baselines`: append-only audited approvals connecting a dataset and dataset version to a reviewed evaluation run.

@@ -207,3 +207,24 @@ Residual risks and deferrals:
 - Baseline thresholds are not hard-coded because meaningful gates require reviewed baseline distributions and business-risk calibration.
 - Human-review queues, blind/randomized review, hosted LLM judges, and online experimentation remain deferred.
 - Evaluation datasets may contain sensitive query/label text; deployment-specific retention, redaction, and access policy must be finalized before external customer use.
+
+## Phase 8 implementation security review
+
+Phase 8 adds one explicit advanced RAG configuration, `phase8-multi-query-expansion-v1`, for deterministic query expansion and bounded multi-query retrieval planning.
+
+Security controls implemented:
+
+- Retrieval configuration is allowlisted by API schema and service validation. Clients cannot submit arbitrary prompt templates, custom transformers, or unreviewed retrieval code.
+- The Phase 8 query transformer is deterministic and local. It uses fixed synonym mappings, does not call paid model APIs, does not require a local LLM download, and cannot provision external infrastructure.
+- Query expansion cannot broaden tenant, source, document, membership, or ACL scope. Existing repository predicates still apply inside every semantic and lexical branch before ranking.
+- Fan-out is bounded by configuration: maximum query variants, branch-query budget, and per-branch candidate limit are recorded in debug output.
+- Prompt-injection-like query text suppresses expansion and uses the original query only, with a visible warning in the retrieval plan.
+- Answer evidence stores retrieval provenance so later inspection can identify which query variant contributed an evidence item.
+- Evaluation runs can override retrieval configuration for baseline-versus-candidate ablation while keeping labels hidden from the system-under-test.
+
+Residual risks and deferrals:
+
+- Deterministic synonym expansion is intentionally narrow; it is not a general semantic rewriter.
+- Query expansion can still introduce intent drift in domains not covered by fixtures. Additional mappings require evaluation evidence and slice review.
+- Contextual chunk projections, learned fusion, hosted/LLM query rewriters, personalization, online experimentation, LlamaIndex components, OpenSearch, and automatic promotion remain deferred.
+- Production debug access to transformed queries should be role-gated and retention-controlled before external customer exposure.

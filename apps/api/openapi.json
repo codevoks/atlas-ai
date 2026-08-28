@@ -2090,6 +2090,11 @@
           "end_char": {
             "type": "integer",
             "title": "End Char"
+          },
+          "retrieval_provenance": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Retrieval Provenance"
           }
         },
         "type": "object",
@@ -2108,7 +2113,8 @@
           "rrf_score",
           "quote",
           "start_char",
-          "end_char"
+          "end_char",
+          "retrieval_provenance"
         ],
         "title": "AnswerEvidenceResponse"
       },
@@ -2129,6 +2135,15 @@
             ],
             "title": "Retrieval Mode",
             "default": "hybrid"
+          },
+          "retrieval_config_version": {
+            "type": "string",
+            "enum": [
+              "phase5-postgres-fts-rrf-v1",
+              "phase8-multi-query-expansion-v1"
+            ],
+            "title": "Retrieval Config Version",
+            "default": "phase5-postgres-fts-rrf-v1"
           },
           "top_k": {
             "anyOf": [
@@ -2902,6 +2917,15 @@
             "title": "Retrieval Mode",
             "default": "hybrid"
           },
+          "retrieval_config_version": {
+            "type": "string",
+            "enum": [
+              "phase5-postgres-fts-rrf-v1",
+              "phase8-multi-query-expansion-v1"
+            ],
+            "title": "Retrieval Config Version",
+            "default": "phase5-postgres-fts-rrf-v1"
+          },
           "top_k": {
             "type": "integer",
             "maximum": 20.0,
@@ -2985,6 +3009,10 @@
             "type": "string",
             "title": "Retrieval Mode"
           },
+          "retrieval_config_version": {
+            "type": "string",
+            "title": "Retrieval Config Version"
+          },
           "top_k": {
             "type": "integer",
             "title": "Top K"
@@ -3032,6 +3060,7 @@
           "ordinal",
           "query",
           "retrieval_mode",
+          "retrieval_config_version",
           "top_k",
           "relevant_chunk_ids",
           "expected_answer_substrings",
@@ -3362,6 +3391,21 @@
             "maxLength": 160,
             "minLength": 2,
             "title": "Run Name"
+          },
+          "retrieval_config_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "phase5-postgres-fts-rrf-v1",
+                  "phase8-multi-query-expansion-v1"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval Config Version"
           }
         },
         "type": "object",
@@ -3669,6 +3713,11 @@
               }
             ],
             "title": "Embedding Model Version"
+          },
+          "retrieval_provenance": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Retrieval Provenance"
           }
         },
         "type": "object",
@@ -4013,6 +4062,15 @@
             "title": "Mode",
             "default": "hybrid"
           },
+          "retrieval_config_version": {
+            "type": "string",
+            "enum": [
+              "phase5-postgres-fts-rrf-v1",
+              "phase8-multi-query-expansion-v1"
+            ],
+            "title": "Retrieval Config Version",
+            "default": "phase5-postgres-fts-rrf-v1"
+          },
           "top_k": {
             "anyOf": [
               {
@@ -4126,6 +4184,15 @@
             "maxLength": 4000,
             "minLength": 1,
             "title": "Query"
+          },
+          "retrieval_config_version": {
+            "type": "string",
+            "enum": [
+              "phase5-postgres-fts-rrf-v1",
+              "phase8-multi-query-expansion-v1"
+            ],
+            "title": "Retrieval Config Version",
+            "default": "phase5-postgres-fts-rrf-v1"
           },
           "top_k": {
             "anyOf": [

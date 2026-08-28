@@ -59,6 +59,7 @@ class DeterministicEvaluationRunner:
         actor: Actor,
         workspace_id: uuid.UUID,
         case: EvaluationCaseRecord,
+        retrieval_config_version: str | None = None,
     ) -> EvaluationCaseExecution:
         started = time.perf_counter()
         try:
@@ -82,6 +83,7 @@ class DeterministicEvaluationRunner:
                 top_k=case.top_k,
                 filters=SearchFilter(),
                 mode=case.retrieval_mode,
+                retrieval_config_version=retrieval_config_version or case.retrieval_config_version,
             )
             ranked_ids = [candidate.chunk_id for candidate in candidates]
             answer = await self._answer.answer(
@@ -91,6 +93,7 @@ class DeterministicEvaluationRunner:
                 top_k=case.top_k,
                 filters=SearchFilter(),
                 retrieval_mode=case.retrieval_mode,
+                retrieval_config_version=retrieval_config_version or case.retrieval_config_version,
             )
             metrics: dict[str, object] = {
                 "retrieval": {
@@ -124,6 +127,8 @@ class DeterministicEvaluationRunner:
                 },
                 "lineage": {
                     "retrieval_mode": case.retrieval_mode,
+                    "retrieval_config_version": retrieval_config_version
+                    or case.retrieval_config_version,
                     "top_k": case.top_k,
                     "answer_run_id": str(answer.id),
                 },

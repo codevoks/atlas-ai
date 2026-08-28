@@ -379,6 +379,9 @@ class SemanticSearchFilters(BaseModel):
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=4_000)
     mode: Literal["semantic", "lexical", "hybrid"] = "hybrid"
+    retrieval_config_version: Literal[
+        "phase5-postgres-fts-rrf-v1", "phase8-multi-query-expansion-v1"
+    ] = "phase5-postgres-fts-rrf-v1"
     top_k: int | None = Field(default=None, ge=1, le=20)
     filters: SemanticSearchFilters = Field(default_factory=SemanticSearchFilters)
     debug: bool = False
@@ -386,6 +389,9 @@ class SearchRequest(BaseModel):
 
 class SemanticSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=4_000)
+    retrieval_config_version: Literal[
+        "phase5-postgres-fts-rrf-v1", "phase8-multi-query-expansion-v1"
+    ] = "phase5-postgres-fts-rrf-v1"
     top_k: int | None = Field(default=None, ge=1, le=20)
     filters: SemanticSearchFilters = Field(default_factory=SemanticSearchFilters)
     debug: bool = False
@@ -415,6 +421,7 @@ class EvidenceResponse(BaseModel):
     embedding_provider: str | None = None
     embedding_model: str | None = None
     embedding_model_version: str | None = None
+    retrieval_provenance: dict[str, object] = Field(default_factory=dict)
 
     @classmethod
     def from_candidate(cls, candidate: SearchCandidate) -> EvidenceResponse:
@@ -442,6 +449,7 @@ class EvidenceResponse(BaseModel):
             embedding_provider=candidate.embedding_provider,
             embedding_model=candidate.embedding_model,
             embedding_model_version=candidate.embedding_model_version,
+            retrieval_provenance=candidate.retrieval_provenance or {},
         )
 
 
@@ -456,6 +464,9 @@ class SearchResponse(BaseModel):
 class AnswerRequest(BaseModel):
     query: str = Field(min_length=1, max_length=4_000)
     retrieval_mode: Literal["semantic", "lexical", "hybrid"] = "hybrid"
+    retrieval_config_version: Literal[
+        "phase5-postgres-fts-rrf-v1", "phase8-multi-query-expansion-v1"
+    ] = "phase5-postgres-fts-rrf-v1"
     top_k: int | None = Field(default=None, ge=1, le=20)
     filters: SemanticSearchFilters = Field(default_factory=SemanticSearchFilters)
 
@@ -476,6 +487,7 @@ class AnswerEvidenceResponse(BaseModel):
     quote: str
     start_char: int
     end_char: int
+    retrieval_provenance: dict[str, object]
 
     @classmethod
     def from_record(cls, record: AnswerEvidenceRecord) -> AnswerEvidenceResponse:
@@ -495,6 +507,7 @@ class AnswerEvidenceResponse(BaseModel):
             quote=record.quote,
             start_char=record.start_char,
             end_char=record.end_char,
+            retrieval_provenance=record.retrieval_provenance,
         )
 
 
@@ -616,6 +629,9 @@ class EvaluationDatasetListResponse(BaseModel):
 class EvaluationCaseCreate(BaseModel):
     query: str = Field(min_length=1, max_length=4_000)
     retrieval_mode: Literal["semantic", "lexical", "hybrid"] = "hybrid"
+    retrieval_config_version: Literal[
+        "phase5-postgres-fts-rrf-v1", "phase8-multi-query-expansion-v1"
+    ] = "phase5-postgres-fts-rrf-v1"
     top_k: int = Field(default=5, ge=1, le=20)
     relevant_chunk_ids: list[uuid.UUID] = Field(min_length=1, max_length=20)
     expected_answer_substrings: list[str] = Field(default_factory=list, max_length=10)
@@ -627,6 +643,7 @@ class EvaluationCaseCreate(BaseModel):
         return EvaluationCaseDraft(
             query=self.query,
             retrieval_mode=self.retrieval_mode,
+            retrieval_config_version=self.retrieval_config_version,
             top_k=self.top_k,
             relevant_chunk_ids=self.relevant_chunk_ids,
             expected_answer_substrings=self.expected_answer_substrings,
@@ -648,6 +665,7 @@ class EvaluationCaseResponse(BaseModel):
     ordinal: int
     query: str
     retrieval_mode: str
+    retrieval_config_version: str
     top_k: int
     relevant_chunk_ids: list[uuid.UUID]
     expected_answer_substrings: list[str]
@@ -664,6 +682,7 @@ class EvaluationCaseResponse(BaseModel):
             ordinal=record.ordinal,
             query=record.query,
             retrieval_mode=record.retrieval_mode,
+            retrieval_config_version=record.retrieval_config_version,
             top_k=record.top_k,
             relevant_chunk_ids=record.relevant_chunk_ids,
             expected_answer_substrings=record.expected_answer_substrings,
@@ -706,6 +725,9 @@ class EvaluationDatasetVersionResponse(BaseModel):
 class EvaluationRunCreate(BaseModel):
     dataset_version_id: uuid.UUID
     run_name: str = Field(min_length=2, max_length=160)
+    retrieval_config_version: (
+        Literal["phase5-postgres-fts-rrf-v1", "phase8-multi-query-expansion-v1"] | None
+    ) = None
 
 
 class EvaluationResultResponse(BaseModel):

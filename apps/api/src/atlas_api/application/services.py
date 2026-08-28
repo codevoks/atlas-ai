@@ -47,6 +47,12 @@ from atlas_api.application.ports import (
     UploadIntentRecord,
     WorkspaceRecord,
 )
+from atlas_api.application.retrieval_planning import (
+    BASELINE_RETRIEVAL_CONFIG,
+    DeterministicQueryTransformer,
+    QueryVariant,
+    retrieval_config,
+)
 from atlas_api.config import Settings
 from atlas_api.domain.errors import (
     ForbiddenError,
@@ -476,6 +482,7 @@ class SemanticSearchService:
         self._transactions = transaction_factory
         self._settings = settings
         self._provider = DeterministicLocalEmbeddingProvider(settings)
+        self._transformer = DeterministicQueryTransformer()
 
     async def search(
         self,
@@ -486,6 +493,7 @@ class SemanticSearchService:
         top_k: int | None,
         filters: SearchFilter,
         mode: Literal["semantic", "lexical", "hybrid"] = "semantic",
+        retrieval_config_version: str | None = None,
     ) -> tuple[list[SearchCandidate], dict[str, object]]:
         clean_query = " ".join(query.split())
         if not clean_query:
@@ -497,14 +505,26 @@ class SemanticSearchService:
             raise ValidationError("top_k is outside the configured search bounds.")
         if mode not in {"semantic", "lexical", "hybrid"}:
             raise ValidationError("Search mode is not supported.")
+        plan = self._transformer.plan(
+            query=clean_query,
+            retrieval_config_version=(
+                retrieval_config_version or self._settings.retrieval_config_version
+            ),
+        )
 
         batch = None
-        query_vector: list[float] | None = None
+        query_vectors: dict[int, list[float]] = {}
         if mode in {"semantic", "hybrid"}:
             batch = await self._provider.embed(
-                [EmbeddingRequest(item_id=uuid.uuid4(), text=clean_query)]
+                [
+                    EmbeddingRequest(item_id=uuid.uuid4(), text=variant.text)
+                    for variant in plan.variants
+                ]
             )
-            query_vector = batch.items[0].vector
+            query_vectors = {
+                variant.rank: item.vector
+                for variant, item in zip(plan.variants, batch.items, strict=True)
+            }
         async with self._transactions() as tx:
             membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
             if membership is None:
@@ -513,11 +533,14 @@ class SemanticSearchService:
             candidate_limit = min(
                 self._settings.semantic_search_max_top_k,
                 limit * self._settings.hybrid_search_candidate_multiplier,
+                plan.config.max_candidates_per_branch,
             )
             semantic_candidates: list[SearchCandidate] = []
             lexical_candidates: list[SearchCandidate] = []
+            semantic_by_variant: list[tuple[QueryVariant, list[SearchCandidate]]] = []
+            lexical_by_variant: list[tuple[QueryVariant, list[SearchCandidate]]] = []
             embedding_set = None
-            if batch is not None and query_vector is not None:
+            if batch is not None:
                 embedding_set = await tx.documents.active_embedding_set(
                     workspace_id,
                     provider=batch.provider,
@@ -531,32 +554,73 @@ class SemanticSearchService:
                         "external_provider": False,
                     },
                 )
-                semantic_candidates = await tx.documents.semantic_search(
-                    actor=actor,
-                    workspace_id=workspace_id,
-                    embedding_set_id=embedding_set.id,
-                    query_vector=query_vector,
-                    top_k=candidate_limit if mode == "hybrid" else limit,
-                    filters=filters,
-                )
+                for variant in plan.variants:
+                    variant_candidates = await tx.documents.semantic_search(
+                        actor=actor,
+                        workspace_id=workspace_id,
+                        embedding_set_id=embedding_set.id,
+                        query_vector=query_vectors[variant.rank],
+                        top_k=candidate_limit if mode == "hybrid" else limit,
+                        filters=filters,
+                    )
+                    variant_candidates = [
+                        self._with_query_provenance(candidate, variant, plan.config.version)
+                        for candidate in variant_candidates
+                    ]
+                    semantic_by_variant.append((variant, variant_candidates))
+                    semantic_candidates.extend(variant_candidates)
             if mode in {"lexical", "hybrid"}:
-                lexical_candidates = await tx.documents.lexical_search(
-                    actor=actor,
-                    workspace_id=workspace_id,
-                    query=clean_query,
-                    top_k=candidate_limit if mode == "hybrid" else limit,
-                    filters=filters,
-                    language=self._settings.lexical_search_language,
-                )
+                for variant in plan.variants:
+                    variant_candidates = await tx.documents.lexical_search(
+                        actor=actor,
+                        workspace_id=workspace_id,
+                        query=variant.text,
+                        top_k=candidate_limit if mode == "hybrid" else limit,
+                        filters=filters,
+                        language=self._settings.lexical_search_language,
+                    )
+                    variant_candidates = [
+                        self._with_query_provenance(candidate, variant, plan.config.version)
+                        for candidate in variant_candidates
+                    ]
+                    lexical_by_variant.append((variant, variant_candidates))
+                    lexical_candidates.extend(variant_candidates)
         if mode == "semantic":
-            candidates = semantic_candidates[:limit]
+            candidates = self._aggregate_variant_candidates(
+                semantic_by_variant,
+                limit=limit,
+                stage="semantic",
+                diversity_enabled=plan.config.diversity_enabled,
+            )
         elif mode == "lexical":
-            candidates = lexical_candidates[:limit]
-        else:
+            candidates = self._aggregate_variant_candidates(
+                lexical_by_variant,
+                limit=limit,
+                stage="lexical",
+                diversity_enabled=plan.config.diversity_enabled,
+            )
+        elif plan.config.version == BASELINE_RETRIEVAL_CONFIG:
             candidates = self._fuse_rrf(semantic_candidates, lexical_candidates, limit=limit)
+        else:
+            candidates = self._fuse_planned_rrf(
+                [*semantic_by_variant, *lexical_by_variant],
+                limit=limit,
+                diversity_enabled=plan.config.diversity_enabled,
+            )
         debug = {
             "mode": mode,
-            "retrieval_config_version": self._settings.retrieval_config_version,
+            "retrieval_config_version": plan.config.version,
+            "retrieval_plan": {
+                "original_query": plan.original_query,
+                "variants": [
+                    {"rank": item.rank, "text": item.text, "transform": item.transform}
+                    for item in plan.variants
+                ],
+                "branch_budget": plan.branch_budget,
+                "warnings": plan.warnings,
+                "transformation_policy": plan.config.transformation_policy,
+                "diversity_enabled": plan.config.diversity_enabled,
+            },
             "lexical_language": self._settings.lexical_search_language,
             "rrf_k": self._settings.hybrid_search_rrf_k,
             "candidate_limit": candidate_limit if mode == "hybrid" else limit,
@@ -581,6 +645,136 @@ class SemanticSearchService:
             "paid_services": False,
         }
         return candidates, debug
+
+    @staticmethod
+    def _with_query_provenance(
+        candidate: SearchCandidate, variant: QueryVariant, retrieval_config_version: str
+    ) -> SearchCandidate:
+        return replace(
+            candidate,
+            retrieval_provenance={
+                "retrieval_config_version": retrieval_config_version,
+                "query_variant_rank": variant.rank,
+                "query_variant": variant.text,
+                "query_transform": variant.transform,
+                "matched_query_variants": [variant.text],
+            },
+        )
+
+    def _aggregate_variant_candidates(
+        self,
+        variant_candidates: list[tuple[QueryVariant, list[SearchCandidate]]],
+        *,
+        limit: int,
+        stage: Literal["semantic", "lexical"],
+        diversity_enabled: bool,
+    ) -> list[SearchCandidate]:
+        by_identity: dict[tuple[uuid.UUID, uuid.UUID], SearchCandidate] = {}
+        best_score: dict[tuple[uuid.UUID, uuid.UUID], float] = {}
+        matched_variants: dict[tuple[uuid.UUID, uuid.UUID], list[str]] = {}
+        for variant, candidates in variant_candidates:
+            for candidate in candidates:
+                identity = (candidate.chunk_id, candidate.document_version_id)
+                matched_variants.setdefault(identity, []).append(variant.text)
+                if identity not in by_identity or candidate.score > best_score[identity]:
+                    by_identity[identity] = candidate
+                    best_score[identity] = candidate.score
+        ordered = sorted(
+            by_identity,
+            key=lambda identity: (-best_score[identity], by_identity[identity].chunk_id.hex),
+        )
+        if diversity_enabled:
+            ordered = self._diversify_identities(ordered, by_identity)
+        return [
+            replace(
+                by_identity[identity],
+                retrieval_stage=stage,
+                retrieval_provenance={
+                    **(by_identity[identity].retrieval_provenance or {}),
+                    "matched_query_variants": sorted(set(matched_variants[identity])),
+                    "aggregator": "best_score_with_optional_diversity",
+                },
+            )
+            for identity in ordered[:limit]
+        ]
+
+    def _fuse_planned_rrf(
+        self,
+        variant_candidates: list[tuple[QueryVariant, list[SearchCandidate]]],
+        *,
+        limit: int,
+        diversity_enabled: bool,
+    ) -> list[SearchCandidate]:
+        by_identity: dict[tuple[uuid.UUID, uuid.UUID], SearchCandidate] = {}
+        scores: dict[tuple[uuid.UUID, uuid.UUID], float] = {}
+        semantic_scores: dict[tuple[uuid.UUID, uuid.UUID], float] = {}
+        lexical_scores: dict[tuple[uuid.UUID, uuid.UUID], float] = {}
+        semantic_ranks: dict[tuple[uuid.UUID, uuid.UUID], int] = {}
+        lexical_ranks: dict[tuple[uuid.UUID, uuid.UUID], int] = {}
+        matched_variants: dict[tuple[uuid.UUID, uuid.UUID], list[str]] = {}
+        rrf_k = float(self._settings.hybrid_search_rrf_k)
+
+        for variant, candidates in variant_candidates:
+            for rank, candidate in enumerate(candidates, start=1):
+                identity = (candidate.chunk_id, candidate.document_version_id)
+                by_identity.setdefault(identity, candidate)
+                scores[identity] = scores.get(identity, 0.0) + (1.0 / (rrf_k + rank))
+                matched_variants.setdefault(identity, []).append(variant.text)
+                if candidate.retrieval_stage == "semantic":
+                    semantic_scores[identity] = max(
+                        semantic_scores.get(identity, candidate.semantic_score or candidate.score),
+                        candidate.semantic_score or candidate.score,
+                    )
+                    semantic_ranks[identity] = min(semantic_ranks.get(identity, rank), rank)
+                if candidate.retrieval_stage == "lexical":
+                    lexical_scores[identity] = max(
+                        lexical_scores.get(identity, candidate.lexical_score or candidate.score),
+                        candidate.lexical_score or candidate.score,
+                    )
+                    lexical_ranks[identity] = min(lexical_ranks.get(identity, rank), rank)
+
+        ordered = sorted(
+            by_identity,
+            key=lambda identity: (-scores[identity], by_identity[identity].chunk_id.hex),
+        )
+        if diversity_enabled:
+            ordered = self._diversify_identities(ordered, by_identity)
+        return [
+            replace(
+                by_identity[identity],
+                retrieval_stage="hybrid",
+                score=round(scores[identity], 10),
+                distance=round(1.0 - scores[identity], 10),
+                semantic_score=semantic_scores.get(identity),
+                lexical_score=lexical_scores.get(identity),
+                rrf_score=round(scores[identity], 10),
+                semantic_rank=semantic_ranks.get(identity),
+                lexical_rank=lexical_ranks.get(identity),
+                retrieval_provenance={
+                    **(by_identity[identity].retrieval_provenance or {}),
+                    "matched_query_variants": sorted(set(matched_variants[identity])),
+                    "aggregator": "planned_rrf_with_optional_diversity",
+                },
+            )
+            for identity in ordered[:limit]
+        ]
+
+    @staticmethod
+    def _diversify_identities(
+        ordered: list[tuple[uuid.UUID, uuid.UUID]],
+        candidates: dict[tuple[uuid.UUID, uuid.UUID], SearchCandidate],
+    ) -> list[tuple[uuid.UUID, uuid.UUID]]:
+        selected: list[tuple[uuid.UUID, uuid.UUID]] = []
+        deferred: list[tuple[uuid.UUID, uuid.UUID]] = []
+        seen_documents: set[uuid.UUID] = set()
+        for identity in ordered:
+            document_id = candidates[identity].document_id
+            if document_id in seen_documents:
+                deferred.append(identity)
+                continue
+            selected.append(identity)
+            seen_documents.add(document_id)
+        return [*selected, *deferred]
 
     def _fuse_rrf(
         self,
@@ -720,6 +914,7 @@ class AnswerService:
         top_k: int | None,
         filters: SearchFilter,
         retrieval_mode: Literal["semantic", "lexical", "hybrid"] = "hybrid",
+        retrieval_config_version: str | None = None,
     ) -> AnswerRunRecord:
         clean_query = " ".join(query.split())
         if not clean_query:
@@ -733,6 +928,7 @@ class AnswerService:
             top_k=top_k,
             filters=filters,
             mode=retrieval_mode,
+            retrieval_config_version=retrieval_config_version,
         )
         reranked = self._reranker.rerank(candidates)
         context = self._context_builder.build(reranked)
@@ -909,8 +1105,10 @@ class EvaluationService:
         workspace_id: uuid.UUID,
         dataset_version_id: uuid.UUID,
         run_name: str,
+        retrieval_config_version: str | None = None,
     ) -> EvaluationRunRecord:
         clean_name = self._clean_name(run_name)
+        clean_retrieval_config_version = retrieval_config_version or BASELINE_RETRIEVAL_CONFIG
         started = datetime.now(UTC)
         async with self._transactions() as tx:
             membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
@@ -929,7 +1127,8 @@ class EvaluationService:
                 run_name=clean_name,
                 evaluation_config={
                     "runner": "deterministic-local",
-                    "runner_version": "phase7-evaluation-runner-v1",
+                    "runner_version": "phase8-evaluation-runner-v1",
+                    "retrieval_config_version": clean_retrieval_config_version,
                     "paid_services": False,
                     "large_local_model_required": False,
                 },
@@ -939,7 +1138,10 @@ class EvaluationService:
         result_drafts: list[EvaluationResultRecord] = []
         for case in version.cases:
             executed = await self._runner.run_case(
-                actor=actor, workspace_id=workspace_id, case=case
+                actor=actor,
+                workspace_id=workspace_id,
+                case=case,
+                retrieval_config_version=clean_retrieval_config_version,
             )
             result_drafts.append(
                 EvaluationResultRecord(
@@ -1056,9 +1258,11 @@ class EvaluationService:
             raise ValidationError("Evaluation case top_k must be between 1 and 20.")
         if not case.relevant_chunk_ids:
             raise ValidationError("Evaluation case must include relevant chunk labels.")
+        retrieval_config(case.retrieval_config_version)
         return EvaluationCaseDraft(
             query=query,
             retrieval_mode=case.retrieval_mode,
+            retrieval_config_version=case.retrieval_config_version,
             top_k=case.top_k,
             relevant_chunk_ids=list(dict.fromkeys(case.relevant_chunk_ids)),
             expected_answer_substrings=[
@@ -1077,6 +1281,7 @@ class EvaluationService:
             {
                 "query": case.query,
                 "retrieval_mode": case.retrieval_mode,
+                "retrieval_config_version": case.retrieval_config_version,
                 "top_k": case.top_k,
                 "relevant_chunk_ids": sorted(str(item) for item in case.relevant_chunk_ids),
                 "expected_answer_substrings": case.expected_answer_substrings,

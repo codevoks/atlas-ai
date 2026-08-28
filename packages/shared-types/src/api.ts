@@ -556,6 +556,10 @@ export interface components {
             start_char: number;
             /** End Char */
             end_char: number;
+            /** Retrieval Provenance */
+            retrieval_provenance: {
+                [key: string]: unknown;
+            };
         };
         /** AnswerRequest */
         AnswerRequest: {
@@ -567,6 +571,12 @@ export interface components {
              * @enum {string}
              */
             retrieval_mode: "semantic" | "lexical" | "hybrid";
+            /**
+             * Retrieval Config Version
+             * @default phase5-postgres-fts-rrf-v1
+             * @enum {string}
+             */
+            retrieval_config_version: "phase5-postgres-fts-rrf-v1" | "phase8-multi-query-expansion-v1";
             /** Top K */
             top_k?: number | null;
             filters?: components["schemas"]["SemanticSearchFilters"];
@@ -905,6 +915,12 @@ export interface components {
              */
             retrieval_mode: "semantic" | "lexical" | "hybrid";
             /**
+             * Retrieval Config Version
+             * @default phase5-postgres-fts-rrf-v1
+             * @enum {string}
+             */
+            retrieval_config_version: "phase5-postgres-fts-rrf-v1" | "phase8-multi-query-expansion-v1";
+            /**
              * Top K
              * @default 5
              */
@@ -945,6 +961,8 @@ export interface components {
             query: string;
             /** Retrieval Mode */
             retrieval_mode: string;
+            /** Retrieval Config Version */
+            retrieval_config_version: string;
             /** Top K */
             top_k: number;
             /** Relevant Chunk Ids */
@@ -1080,6 +1098,8 @@ export interface components {
             dataset_version_id: string;
             /** Run Name */
             run_name: string;
+            /** Retrieval Config Version */
+            retrieval_config_version?: ("phase5-postgres-fts-rrf-v1" | "phase8-multi-query-expansion-v1") | null;
         };
         /** EvaluationRunListResponse */
         EvaluationRunListResponse: {
@@ -1204,6 +1224,10 @@ export interface components {
             embedding_model?: string | null;
             /** Embedding Model Version */
             embedding_model_version?: string | null;
+            /** Retrieval Provenance */
+            retrieval_provenance?: {
+                [key: string]: unknown;
+            };
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1330,6 +1354,12 @@ export interface components {
              * @enum {string}
              */
             mode: "semantic" | "lexical" | "hybrid";
+            /**
+             * Retrieval Config Version
+             * @default phase5-postgres-fts-rrf-v1
+             * @enum {string}
+             */
+            retrieval_config_version: "phase5-postgres-fts-rrf-v1" | "phase8-multi-query-expansion-v1";
             /** Top K */
             top_k?: number | null;
             filters?: components["schemas"]["SemanticSearchFilters"];
@@ -1368,6 +1398,12 @@ export interface components {
         SemanticSearchRequest: {
             /** Query */
             query: string;
+            /**
+             * Retrieval Config Version
+             * @default phase5-postgres-fts-rrf-v1
+             * @enum {string}
+             */
+            retrieval_config_version: "phase5-postgres-fts-rrf-v1" | "phase8-multi-query-expansion-v1";
             /** Top K */
             top_k?: number | null;
             filters?: components["schemas"]["SemanticSearchFilters"];

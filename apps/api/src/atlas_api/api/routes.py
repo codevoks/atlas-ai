@@ -420,6 +420,7 @@ async def search(
             document_id=payload.filters.document_id,
         ),
         mode=payload.mode,
+        retrieval_config_version=payload.retrieval_config_version,
     )
     return SearchResponse(
         mode=payload.mode,
@@ -451,6 +452,7 @@ async def semantic_search(
             source_id=payload.filters.source_id,
             document_id=payload.filters.document_id,
         ),
+        retrieval_config_version=payload.retrieval_config_version,
     )
     return SemanticSearchResponse(
         items=[EvidenceResponse.from_candidate(item) for item in records],
@@ -480,6 +482,7 @@ async def create_answer(
             document_id=payload.filters.document_id,
         ),
         retrieval_mode=payload.retrieval_mode,
+        retrieval_config_version=payload.retrieval_config_version,
     )
     return AnswerResponse.from_record(record)
 
@@ -617,6 +620,7 @@ async def create_evaluation_run(
         workspace_id=workspace_id,
         dataset_version_id=payload.dataset_version_id,
         run_name=payload.run_name,
+        retrieval_config_version=payload.retrieval_config_version,
     )
     return EvaluationRunResponse.from_record(record)
 

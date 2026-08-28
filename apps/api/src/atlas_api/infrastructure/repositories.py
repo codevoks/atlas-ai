@@ -1174,6 +1174,7 @@ class SqlAlchemyDocumentStore:
                 semantic_score=item.candidate.semantic_score,
                 lexical_score=item.candidate.lexical_score,
                 rrf_score=item.candidate.rrf_score,
+                retrieval_provenance=item.candidate.retrieval_provenance or {},
                 quote=item.context_text,
                 start_char=item.candidate.start_char,
                 end_char=item.candidate.start_char + len(item.context_text),
@@ -1372,6 +1373,7 @@ class SqlAlchemyDocumentStore:
                 ordinal=index,
                 query_text=case.query,
                 retrieval_mode=case.retrieval_mode,
+                retrieval_config_version=case.retrieval_config_version,
                 top_k=case.top_k,
                 relevant_chunk_ids=[str(item) for item in case.relevant_chunk_ids],
                 expected_answer_substrings=case.expected_answer_substrings,
@@ -1828,6 +1830,7 @@ class SqlAlchemyDocumentStore:
                 quote=item.quote,
                 start_char=item.start_char,
                 end_char=item.end_char,
+                retrieval_provenance=item.retrieval_provenance,
             )
             for item in evidence_rows
         ]
@@ -1929,6 +1932,7 @@ class SqlAlchemyDocumentStore:
                     retrieval_mode=cast(
                         Literal["semantic", "lexical", "hybrid"], case.retrieval_mode
                     ),
+                    retrieval_config_version=case.retrieval_config_version,
                     top_k=case.top_k,
                     relevant_chunk_ids=[
                         uuid.UUID(chunk_id) for chunk_id in case.relevant_chunk_ids

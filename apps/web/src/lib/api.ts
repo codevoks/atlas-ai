@@ -41,6 +41,7 @@ export interface Evidence {
   embedding_provider: string | null;
   embedding_model: string | null;
   embedding_model_version: string | null;
+  retrieval_provenance: Record<string, unknown>;
 }
 
 export interface SemanticSearchResult {
@@ -50,6 +51,9 @@ export interface SemanticSearchResult {
 }
 
 export type SearchMode = "semantic" | "lexical" | "hybrid";
+export type RetrievalConfigVersion =
+  | "phase5-postgres-fts-rrf-v1"
+  | "phase8-multi-query-expansion-v1";
 
 export interface SearchResult extends SemanticSearchResult {
   mode: SearchMode;
@@ -72,6 +76,7 @@ export interface AnswerEvidence {
   quote: string;
   start_char: number;
   end_char: number;
+  retrieval_provenance: Record<string, unknown>;
 }
 
 export interface Citation {
@@ -257,10 +262,17 @@ export async function searchEvidence(
   workspaceId: string,
   query: string,
   mode: SearchMode,
+  retrievalConfigVersion: RetrievalConfigVersion,
 ): Promise<SearchResult> {
   return apiRequest<SearchResult>(`/v1/workspaces/${workspaceId}/search`, {
     method: "POST",
-    body: JSON.stringify({ query, mode, top_k: 5, debug: true }),
+    body: JSON.stringify({
+      query,
+      mode,
+      retrieval_config_version: retrievalConfigVersion,
+      top_k: 5,
+      debug: true,
+    }),
   });
 }
 
@@ -268,10 +280,16 @@ export async function answerQuestion(
   workspaceId: string,
   query: string,
   retrievalMode: SearchMode,
+  retrievalConfigVersion: RetrievalConfigVersion,
 ): Promise<AnswerResult> {
   return apiRequest<AnswerResult>(`/v1/workspaces/${workspaceId}/answers`, {
     method: "POST",
-    body: JSON.stringify({ query, retrieval_mode: retrievalMode, top_k: 5 }),
+    body: JSON.stringify({
+      query,
+      retrieval_mode: retrievalMode,
+      retrieval_config_version: retrievalConfigVersion,
+      top_k: 5,
+    }),
   });
 }
 

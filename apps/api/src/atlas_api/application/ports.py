@@ -221,6 +221,7 @@ class SearchCandidate:
     embedding_provider: str | None = None
     embedding_model: str | None = None
     embedding_model_version: str | None = None
+    retrieval_provenance: dict[str, object] | None = None
 
 
 SemanticSearchFilter = SearchFilter
@@ -293,6 +294,7 @@ class AnswerEvidenceRecord:
     quote: str
     start_char: int
     end_char: int
+    retrieval_provenance: dict[str, object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -336,6 +338,7 @@ class EvaluationDatasetRecord:
 class EvaluationCaseDraft:
     query: str
     retrieval_mode: Literal["semantic", "lexical", "hybrid"]
+    retrieval_config_version: str
     top_k: int
     relevant_chunk_ids: list[uuid.UUID]
     expected_answer_substrings: list[str]
