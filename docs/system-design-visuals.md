@@ -496,7 +496,40 @@ flowchart TB
 
 The Phase 8 transformer changes only query text used for candidate generation. It does not change workspace membership, source/document filters, citation validation, or generation policy. The baseline configuration remains available for rollback and comparison.
 
-## 7. Evidence-driven scale evolution
+## 7. Phase 9 bounded research workflow
+
+```mermaid
+flowchart TB
+    User[Authorized workspace member] --> API[Research API]
+    API --> Auth[RBAC and tenant checks]
+    Auth --> Run[(research_runs)]
+    Run --> Plan[Planner node\nbounded subquestions]
+    Plan --> Step1[(research_steps)]
+    Plan --> Budget[Budget ledger\nsteps, tools, tokens, cost]
+    Budget --> ToolPolicy{Tool policy}
+    ToolPolicy -->|allowlisted| Retrieval[atlas_retrieval tool\nPhase 8 search service]
+    ToolPolicy -->|allowlisted| Catalog[local_policy_catalog tool]
+    ToolPolicy -->|forbidden URL/tool/prompt| Reject[Validation failure\nno tool execution]
+    Retrieval --> ToolRows[(tool_invocations)]
+    Catalog --> ToolRows
+    Retrieval --> Evidence[Workspace evidence\nchunk/version provenance]
+    Catalog --> Evidence
+    Evidence --> Checkpoint[(checkpoints\nschema-versioned state)]
+    Checkpoint --> Approval[(approvals\npending)]
+    Approval -->|deny| Cancelled[research_runs.cancelled]
+    Approval -->|approve current version| Synthesis[Synthesis node\ncited report]
+    Synthesis --> Report[research_runs.succeeded\nreport + evidence]
+    Checkpoint -->|resume| Plan
+
+    classDef trusted fill:var(--viz-series-1),color:var(--foreground),stroke:var(--border);
+    classDef untrusted fill:var(--viz-series-2),color:var(--foreground),stroke:var(--border);
+    class API,Auth,Budget,ToolPolicy,Approval,Synthesis trusted;
+    class User,Retrieval,Catalog,Evidence untrusted;
+```
+
+Phase 9 deliberately implements a single bounded workflow rather than a general autonomous assistant. The default graph uses deterministic local tools and pauses before final synthesis so evidence and tool provenance can be inspected before a report is produced.
+
+## 8. Evidence-driven scale evolution
 
 ```mermaid
 flowchart LR

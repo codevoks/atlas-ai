@@ -32,6 +32,8 @@ class Permission(StrEnum):
     DOCUMENT_DELETE = "document:delete"
     INGESTION_JOB_READ = "ingestion_job:read"
     INGESTION_JOB_MANAGE = "ingestion_job:manage"
+    RESEARCH_RUN_READ = "research_run:read"
+    RESEARCH_RUN_MANAGE = "research_run:manage"
 
 
 class SourceType(StrEnum):
@@ -128,6 +130,41 @@ class EvaluationResultStatus(StrEnum):
     SYSTEM_FAILED = "system_failed"
     METRIC_FAILED = "metric_failed"
     MISSING_LABELS = "missing_labels"
+
+
+class ResearchRunStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    WAITING_APPROVAL = "waiting_approval"
+    PAUSED = "paused"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    BUDGET_EXHAUSTED = "budget_exhausted"
+    TIMED_OUT = "timed_out"
+
+
+class ResearchStepStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class ToolInvocationStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    BLOCKED = "blocked"
+
+
+class ApprovalStatus(StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    DENIED = "denied"
+    STALE = "stale"
 
 
 @dataclass(frozen=True, slots=True)

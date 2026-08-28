@@ -716,3 +716,176 @@ class EvaluationBaselineModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class ResearchRunModel(Base):
+    __tablename__ = "research_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending','running','waiting_approval','paused',"
+            "'succeeded','failed','cancelled','budget_exhausted','timed_out')",
+            name="valid_research_run_status",
+        ),
+        CheckConstraint("version >= 1", name="valid_research_run_version"),
+        CheckConstraint("total_cost_usd >= 0", name="valid_research_run_cost"),
+        UniqueConstraint(
+            "created_by_user_id",
+            "idempotency_key_hash",
+            name="uq_research_runs_actor_idempotency",
+        ),
+        Index("ix_research_runs_workspace_created", "workspace_id", "started_at"),
+        Index("ix_research_runs_workspace_status", "workspace_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    purpose: Mapped[str] = mapped_column(String(160), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    graph_version: Mapped[str] = mapped_column(String(120), nullable=False)
+    config_version: Mapped[str] = mapped_column(String(120), nullable=False)
+    model_versions: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    idempotency_key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    budget: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    usage: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    report_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
+    warnings: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    terminal_reason: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    cancellation_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    total_cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ResearchStepModel(Base):
+    __tablename__ = "research_steps"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending','running','succeeded','failed','skipped')",
+            name="valid_research_step_status",
+        ),
+        UniqueConstraint("research_run_id", "ordinal", name="uq_research_steps_run_ordinal"),
+        Index("ix_research_steps_workspace_run", "workspace_id", "research_run_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    research_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("research_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    node_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    input_summary: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    output_summary: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ToolInvocationModel(Base):
+    __tablename__ = "tool_invocations"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending','running','succeeded','failed','blocked')",
+            name="valid_tool_invocation_status",
+        ),
+        UniqueConstraint("research_run_id", "idempotency_key", name="uq_tool_invocations_run_key"),
+        Index("ix_tool_invocations_workspace_run", "workspace_id", "research_run_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    research_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("research_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    research_step_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("research_steps.id", ondelete="CASCADE"), nullable=False
+    )
+    tool_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    input_summary: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    output_summary: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    idempotency_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ResearchCheckpointModel(Base):
+    __tablename__ = "checkpoints"
+    __table_args__ = (Index("ix_checkpoints_workspace_run", "workspace_id", "research_run_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    research_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("research_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    schema_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    state: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ResearchApprovalModel(Base):
+    __tablename__ = "approvals"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending','approved','denied','stale')",
+            name="valid_research_approval_status",
+        ),
+        CheckConstraint("version >= 1", name="valid_research_approval_version"),
+        Index("ix_approvals_workspace_run", "workspace_id", "research_run_id"),
+        Index("ix_approvals_workspace_status", "workspace_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    research_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("research_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    requested_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    approval_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    approval_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

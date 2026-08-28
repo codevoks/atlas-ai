@@ -5,6 +5,8 @@ import {
   addMemberAction,
   cancelIngestionJobAction,
   createSourceAction,
+  createResearchRunAction,
+  decideResearchApprovalAction,
   deleteDocumentAction,
   removeMemberAction,
   renameWorkspaceAction,
@@ -24,10 +26,12 @@ import {
   getIngestionJob,
   getMe,
   getMembers,
+  getResearchRuns,
   getSources,
   getWorkspace,
   searchEvidence,
   type RetrievalConfigVersion,
+  type ResearchRun,
   type SearchMode,
 } from "@/lib/api";
 
@@ -54,14 +58,16 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
   let sources;
   let documents;
   let evaluationRuns;
+  let researchRuns;
   try {
-    [me, workspace, members, sources, documents, evaluationRuns] = await Promise.all([
+    [me, workspace, members, sources, documents, evaluationRuns, researchRuns] = await Promise.all([
       getMe(),
       getWorkspace(workspaceId),
       getMembers(workspaceId),
       getSources(workspaceId),
       getDocuments(workspaceId),
       getEvaluationRuns(workspaceId),
+      getResearchRuns(workspaceId),
     ]);
   } catch (requestError) {
     if (requestError instanceof AtlasApiError && requestError.status === 401) redirect("/sign-in");
@@ -145,6 +151,51 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
           ) : null}
         </div>
         {error ? <p className="alert" role="alert">{error}</p> : null}
+
+        <section className="search-panel">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Bounded research</p>
+              <h2>Run a cited research workflow</h2>
+            </div>
+            <span className="count">{researchRuns.length}</span>
+          </div>
+          <form action={createResearchRunAction} className="search-form">
+            <input name="workspaceId" type="hidden" value={workspace.id} />
+            <label className="sr-only" htmlFor="research-purpose">Research purpose</label>
+            <input
+              id="research-purpose"
+              name="purpose"
+              minLength={2}
+              maxLength={160}
+              defaultValue="Phase 9 research demo"
+              placeholder="Research purpose"
+              required
+            />
+            <label className="sr-only" htmlFor="research-question">Research question</label>
+            <input
+              id="research-question"
+              name="question"
+              maxLength={4000}
+              defaultValue="How should finance approval be handled for SAML access before payment?"
+              placeholder="Research question"
+              required
+            />
+            <button className="button primary" type="submit">Start bounded research</button>
+          </form>
+          {researchRuns.length > 0 ? (
+            <div className="search-results">
+              {researchRuns.map((run) => (
+                <ResearchRunCard key={run.id} run={run} workspaceId={workspace.id} />
+              ))}
+            </div>
+          ) : (
+            <p className="muted">
+              Start a run to plan bounded questions, retrieve Atlas evidence, pause for approval,
+              and synthesize a cited report.
+            </p>
+          )}
+        </section>
 
         <section className="search-panel">
           <div className="section-heading">
@@ -554,6 +605,95 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
         </div>
       </section>
     </main>
+  );
+}
+
+function ResearchRunCard({ run, workspaceId }: { run: ResearchRun; workspaceId: string }) {
+  const pendingApproval = run.approvals.find((approval) => approval.status === "pending");
+  const latestCheckpoint = run.checkpoints.at(-1);
+  return (
+    <article className="search-result">
+      <div>
+        <strong>{run.purpose}</strong>
+        <small>
+          {run.status} · {run.steps.length} steps · {run.tool_invocations.length} tools · $
+          {run.total_cost_usd.toFixed(2)}
+        </small>
+      </div>
+      <p>{run.question}</p>
+      <div className="metric-grid">
+        <span>
+          Steps
+          <strong>{String(run.usage.steps ?? 0)}/{String(run.budget.max_steps ?? "—")}</strong>
+        </span>
+        <span>
+          Tools
+          <strong>
+            {String(run.usage.tool_calls ?? 0)}/{String(run.budget.max_tool_calls ?? "—")}
+          </strong>
+        </span>
+        <span>
+          Cost
+          <strong>${Number(run.usage.cost_usd ?? 0).toFixed(2)}</strong>
+        </span>
+      </div>
+      <small className="mono">
+        run {run.id} · config {run.config_version} · graph {run.graph_version} · version{" "}
+        {run.version}
+      </small>
+      {latestCheckpoint ? (
+        <small className="mono">
+          checkpoint {latestCheckpoint.schema_version} · next{" "}
+          {String(latestCheckpoint.state_summary.next_node ?? "none")} · evidence{" "}
+          {String(latestCheckpoint.state_summary.evidence_count ?? 0)}
+        </small>
+      ) : null}
+      {run.tool_invocations.map((tool) => (
+        <small className="mono" key={tool.id}>
+          tool {tool.tool_name} · {tool.status} · key {tool.idempotency_key}
+        </small>
+      ))}
+      {pendingApproval ? (
+        <div className="approval-box">
+          <strong>Approval required: {pendingApproval.approval_type}</strong>
+          <p>{pendingApproval.reason}</p>
+          <small className="mono">
+            approval {pendingApproval.id} · version {pendingApproval.version}
+          </small>
+          <div className="button-row">
+            <form action={decideResearchApprovalAction}>
+              <input name="workspaceId" type="hidden" value={workspaceId} />
+              <input name="runId" type="hidden" value={run.id} />
+              <input name="approvalId" type="hidden" value={pendingApproval.id} />
+              <input name="version" type="hidden" value={pendingApproval.version} />
+              <input name="approved" type="hidden" value="true" />
+              <SubmitButton>Approve synthesis</SubmitButton>
+            </form>
+            <form action={decideResearchApprovalAction}>
+              <input name="workspaceId" type="hidden" value={workspaceId} />
+              <input name="runId" type="hidden" value={run.id} />
+              <input name="approvalId" type="hidden" value={pendingApproval.id} />
+              <input name="version" type="hidden" value={pendingApproval.version} />
+              <input name="approved" type="hidden" value="false" />
+              <SubmitButton destructive>Deny</SubmitButton>
+            </form>
+          </div>
+        </div>
+      ) : null}
+      {run.report_text ? (
+        <div className="report-preview">
+          <strong>Report</strong>
+          <pre>{run.report_text}</pre>
+        </div>
+      ) : null}
+      {run.evidence.slice(0, 3).map((item, index) => (
+        <small className="mono" key={`${run.id}-${String(item.chunk_id)}-${index}`}>
+          evidence {index + 1}: {String(item.document_title ?? "Untitled")} · chunk{" "}
+          {String(item.chunk_id ?? "unknown")}
+        </small>
+      ))}
+      {run.warnings.length > 0 ? <p className="alert">Warnings: {run.warnings.join(", ")}</p> : null}
+    </article>
   );
 }
 

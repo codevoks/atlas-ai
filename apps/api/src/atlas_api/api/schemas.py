@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from atlas_api.application.ports import (
     AnswerEvidenceRecord,
     AnswerRunRecord,
+    CheckpointRecord,
     ChunkRecord,
     DocumentRecord,
     DocumentVersionRecord,
@@ -21,20 +22,28 @@ from atlas_api.application.ports import (
     EvaluationRunRecord,
     IngestionJobRecord,
     MemberRecord,
+    ResearchApprovalRecord,
+    ResearchRunRecord,
+    ResearchStepRecord,
     SearchCandidate,
     SourceRecord,
+    ToolInvocationRecord,
     UploadIntentRecord,
     ValidatedCitationRecord,
     WorkspaceRecord,
 )
 from atlas_api.domain.models import (
     Actor,
+    ApprovalStatus,
     DocumentStatus,
     DocumentVersionStatus,
     IngestionJobState,
+    ResearchRunStatus,
+    ResearchStepStatus,
     Role,
     SourceStatus,
     SourceType,
+    ToolInvocationStatus,
     UploadIntentStatus,
 )
 
@@ -856,6 +865,195 @@ class EmbeddingBackfillResponse(BaseModel):
             embedded_count=result.embedded_count,
             missing_after=result.missing_after,
         )
+
+
+class ResearchRunCreate(BaseModel):
+    purpose: str = Field(min_length=2, max_length=160)
+    question: str = Field(min_length=1, max_length=4000)
+
+
+class ResearchRunCancel(BaseModel):
+    version: int = Field(ge=1)
+
+
+class ResearchApprovalDecision(BaseModel):
+    version: int = Field(ge=1)
+    approved: bool
+
+
+class ResearchStepResponse(BaseModel):
+    id: uuid.UUID
+    ordinal: int
+    node_name: str
+    status: ResearchStepStatus
+    input_summary: dict[str, object]
+    output_summary: dict[str, object]
+    error_code: str | None
+    error_message: str | None
+    latency_ms: int
+    started_at: str
+    completed_at: str | None
+
+    @classmethod
+    def from_record(cls, record: ResearchStepRecord) -> ResearchStepResponse:
+        return cls(
+            id=record.id,
+            ordinal=record.ordinal,
+            node_name=record.node_name,
+            status=record.status,
+            input_summary=record.input_summary,
+            output_summary=record.output_summary,
+            error_code=record.error_code,
+            error_message=record.error_message,
+            latency_ms=record.latency_ms,
+            started_at=record.started_at.isoformat(),
+            completed_at=record.completed_at.isoformat() if record.completed_at else None,
+        )
+
+
+class ToolInvocationResponse(BaseModel):
+    id: uuid.UUID
+    research_step_id: uuid.UUID
+    tool_name: str
+    status: ToolInvocationStatus
+    input_summary: dict[str, object]
+    output_summary: dict[str, object]
+    idempotency_key: str
+    latency_ms: int
+    error_code: str | None
+    error_message: str | None
+    created_at: str
+
+    @classmethod
+    def from_record(cls, record: ToolInvocationRecord) -> ToolInvocationResponse:
+        return cls(
+            id=record.id,
+            research_step_id=record.research_step_id,
+            tool_name=record.tool_name,
+            status=record.status,
+            input_summary=record.input_summary,
+            output_summary=record.output_summary,
+            idempotency_key=record.idempotency_key,
+            latency_ms=record.latency_ms,
+            error_code=record.error_code,
+            error_message=record.error_message,
+            created_at=record.created_at.isoformat(),
+        )
+
+
+class ResearchApprovalResponse(BaseModel):
+    id: uuid.UUID
+    status: ApprovalStatus
+    approval_type: str
+    reason: str
+    approval_payload: dict[str, object]
+    version: int
+    created_at: str
+    decided_at: str | None
+
+    @classmethod
+    def from_record(cls, record: ResearchApprovalRecord) -> ResearchApprovalResponse:
+        return cls(
+            id=record.id,
+            status=record.status,
+            approval_type=record.approval_type,
+            reason=record.reason,
+            approval_payload=record.approval_payload,
+            version=record.version,
+            created_at=record.created_at.isoformat(),
+            decided_at=record.decided_at.isoformat() if record.decided_at else None,
+        )
+
+
+class CheckpointResponse(BaseModel):
+    id: uuid.UUID
+    schema_version: str
+    state_summary: dict[str, object]
+    created_at: str
+
+    @classmethod
+    def from_record(cls, record: CheckpointRecord) -> CheckpointResponse:
+        evidence = record.state.get("evidence")
+        planned_questions = record.state.get("planned_questions")
+        return cls(
+            id=record.id,
+            schema_version=record.schema_version,
+            state_summary={
+                "next_node": record.state.get("next_node"),
+                "evidence_count": len(evidence) if isinstance(evidence, list) else 0,
+                "planned_question_count": (
+                    len(planned_questions) if isinstance(planned_questions, list) else 0
+                ),
+                "has_report_hash": bool(record.state.get("report_hash")),
+            },
+            created_at=record.created_at.isoformat(),
+        )
+
+
+class ResearchRunResponse(BaseModel):
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    created_by_user_id: uuid.UUID
+    purpose: str
+    question: str
+    status: ResearchRunStatus
+    graph_version: str
+    config_version: str
+    model_versions: dict[str, str]
+    input_hash: str
+    budget: dict[str, object]
+    usage: dict[str, object]
+    report_text: str | None
+    evidence: list[dict[str, object]]
+    warnings: list[str]
+    terminal_reason: str | None
+    cancellation_requested: bool
+    version: int
+    total_cost_usd: float
+    started_at: str
+    updated_at: str
+    completed_at: str | None
+    steps: list[ResearchStepResponse]
+    tool_invocations: list[ToolInvocationResponse]
+    approvals: list[ResearchApprovalResponse]
+    checkpoints: list[CheckpointResponse]
+
+    @classmethod
+    def from_record(cls, record: ResearchRunRecord) -> ResearchRunResponse:
+        return cls(
+            id=record.id,
+            workspace_id=record.workspace_id,
+            created_by_user_id=record.created_by_user_id,
+            purpose=record.purpose,
+            question=record.question,
+            status=record.status,
+            graph_version=record.graph_version,
+            config_version=record.config_version,
+            model_versions=record.model_versions,
+            input_hash=record.input_hash,
+            budget=record.budget,
+            usage=record.usage,
+            report_text=record.report_text,
+            evidence=record.evidence,
+            warnings=record.warnings,
+            terminal_reason=record.terminal_reason,
+            cancellation_requested=record.cancellation_requested,
+            version=record.version,
+            total_cost_usd=record.total_cost_usd,
+            started_at=record.started_at.isoformat(),
+            updated_at=record.updated_at.isoformat(),
+            completed_at=record.completed_at.isoformat() if record.completed_at else None,
+            steps=[ResearchStepResponse.from_record(item) for item in record.steps],
+            tool_invocations=[
+                ToolInvocationResponse.from_record(item) for item in record.tool_invocations
+            ],
+            approvals=[ResearchApprovalResponse.from_record(item) for item in record.approvals],
+            checkpoints=[CheckpointResponse.from_record(item) for item in record.checkpoints],
+        )
+
+
+class ResearchRunListResponse(BaseModel):
+    items: list[ResearchRunResponse]
 
 
 class HealthResponse(BaseModel):

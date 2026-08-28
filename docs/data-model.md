@@ -66,6 +66,11 @@ Phase 8 implemented tables and indexes:
 - `evaluation_runs`: reproducible evaluation execution lineage with dataset/config/code revision, metric versions, aggregate metrics, slice metrics, failure summary, zero-cost amount, latency, and status.
 - `evaluation_results`: per-case retrieval and answer outputs, retrieved chunk IDs, answer-run link, deterministic metrics, error metadata, zero-cost amount, and latency.
 - `evaluation_baselines`: append-only audited approvals connecting a dataset and dataset version to a reviewed evaluation run.
+- `research_runs`: workspace/user-scoped bounded workflow execution with purpose, question, graph/config/model versions, input hash, optimistic version, budget, usage, evidence summary, warnings, terminal reason, zero-cost amount, and optional cited report.
+- `research_steps`: ordered node execution records for planning, retrieval, policy check, approval wait, and synthesis, including bounded input/output summaries and safe error metadata.
+- `tool_invocations`: allowlisted tool-call records linked to research steps with stable idempotency keys, sanitized input/output summaries, status, latency, and error metadata.
+- `checkpoints`: schema-versioned workflow checkpoints containing resumable state summaries such as planned questions, evidence identities, approval payload, and next node.
+- `approvals`: optimistic-versioned human approval decisions for sensitive workflow boundaries, including approval type, reason, payload, status, requester/approver, and decision timestamp.
 
 ### Jobs
 
@@ -120,6 +125,16 @@ Hosted reranking/generation, streaming, tools, and finer stage-level checkpoints
 Research states include `PENDING`, `RUNNING`, `WAITING_APPROVAL`, `PAUSED`, and terminal `SUCCEEDED|FAILED|CANCELLED|BUDGET_EXHAUSTED|TIMED_OUT`. State transitions use optimistic concurrency.
 
 Every step/tool call has stable identity, inputs/config provenance, attempt/status, deadlines, sanitized output/evidence, usage, and terminal reason. Checkpoints are schema-versioned and written atomically with step progress when possible. Budget reservations prevent concurrent overspend: reserve before work, commit actual usage, release unused reservation; expired reservations reconcile.
+
+Phase 9 implements the first bounded workflow:
+
+```text
+PENDING -> RUNNING -> WAITING_APPROVAL -> SUCCEEDED
+PENDING|RUNNING|WAITING_APPROVAL -> CANCELLED
+WAITING_APPROVAL -> CANCELLED when approval is denied
+```
+
+The default graph is deterministic and local. It plans bounded subquestions, invokes only `atlas_retrieval` and `local_policy_catalog`, records tool idempotency keys, stores a checkpoint before synthesis, and requires a current approval version before final report generation.
 
 ## Indexes and access paths
 

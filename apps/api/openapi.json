@@ -1768,6 +1768,398 @@
         }
       }
     },
+    "/v1/workspaces/{workspace_id}/research-runs": {
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "List Research Runs",
+        "operationId": "list_research_runs_v1_workspaces__workspace_id__research_runs_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchRunListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Create Research Run",
+        "operationId": "create_research_run_v1_workspaces__workspace_id__research_runs_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchRunCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/research-runs/{research_run_id}": {
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Get Research Run",
+        "operationId": "get_research_run_v1_workspaces__workspace_id__research_runs__research_run_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "research_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Research Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/research-runs/{research_run_id}/resume": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Resume Research Run",
+        "operationId": "resume_research_run_v1_workspaces__workspace_id__research_runs__research_run_id__resume_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "research_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Research Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/research-runs/{research_run_id}/cancel": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Cancel Research Run",
+        "operationId": "cancel_research_run_v1_workspaces__workspace_id__research_runs__research_run_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "research_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Research Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchRunCancel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/research-runs/{research_run_id}/approvals/{approval_id}": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Decide Research Approval",
+        "operationId": "decide_research_approval_v1_workspaces__workspace_id__research_runs__research_run_id__approvals__approval_id__post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "research_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Research Run Id"
+            }
+          },
+          {
+            "name": "approval_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Approval Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchApprovalDecision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/workspaces/{workspace_id}/embeddings/backfill": {
       "post": {
         "tags": [
@@ -2286,6 +2678,46 @@
           "created_at"
         ],
         "title": "AnswerResponse"
+      },
+      "ApprovalStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "approved",
+          "denied",
+          "stale"
+        ],
+        "title": "ApprovalStatus"
+      },
+      "CheckpointResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "schema_version": {
+            "type": "string",
+            "title": "Schema Version"
+          },
+          "state_summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "State Summary"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "schema_version",
+          "state_summary",
+          "created_at"
+        ],
+        "title": "CheckpointResponse"
       },
       "ChunkListResponse": {
         "properties": {
@@ -4034,6 +4466,430 @@
         ],
         "title": "MemberUpdate"
       },
+      "ResearchApprovalDecision": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "approved": {
+            "type": "boolean",
+            "title": "Approved"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "approved"
+        ],
+        "title": "ResearchApprovalDecision"
+      },
+      "ResearchApprovalResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ApprovalStatus"
+          },
+          "approval_type": {
+            "type": "string",
+            "title": "Approval Type"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "approval_payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Approval Payload"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "approval_type",
+          "reason",
+          "approval_payload",
+          "version",
+          "created_at",
+          "decided_at"
+        ],
+        "title": "ResearchApprovalResponse"
+      },
+      "ResearchRunCancel": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "ResearchRunCancel"
+      },
+      "ResearchRunCreate": {
+        "properties": {
+          "purpose": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 2,
+            "title": "Purpose"
+          },
+          "question": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Question"
+          }
+        },
+        "type": "object",
+        "required": [
+          "purpose",
+          "question"
+        ],
+        "title": "ResearchRunCreate"
+      },
+      "ResearchRunListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchRunResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ResearchRunListResponse"
+      },
+      "ResearchRunResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "created_by_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Created By User Id"
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ResearchRunStatus"
+          },
+          "graph_version": {
+            "type": "string",
+            "title": "Graph Version"
+          },
+          "config_version": {
+            "type": "string",
+            "title": "Config Version"
+          },
+          "model_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Model Versions"
+          },
+          "input_hash": {
+            "type": "string",
+            "title": "Input Hash"
+          },
+          "budget": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Budget"
+          },
+          "usage": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Usage"
+          },
+          "report_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Text"
+          },
+          "evidence": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "terminal_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal Reason"
+          },
+          "cancellation_requested": {
+            "type": "boolean",
+            "title": "Cancellation Requested"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "total_cost_usd": {
+            "type": "number",
+            "title": "Total Cost Usd"
+          },
+          "started_at": {
+            "type": "string",
+            "title": "Started At"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchStepResponse"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "tool_invocations": {
+            "items": {
+              "$ref": "#/components/schemas/ToolInvocationResponse"
+            },
+            "type": "array",
+            "title": "Tool Invocations"
+          },
+          "approvals": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchApprovalResponse"
+            },
+            "type": "array",
+            "title": "Approvals"
+          },
+          "checkpoints": {
+            "items": {
+              "$ref": "#/components/schemas/CheckpointResponse"
+            },
+            "type": "array",
+            "title": "Checkpoints"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "created_by_user_id",
+          "purpose",
+          "question",
+          "status",
+          "graph_version",
+          "config_version",
+          "model_versions",
+          "input_hash",
+          "budget",
+          "usage",
+          "report_text",
+          "evidence",
+          "warnings",
+          "terminal_reason",
+          "cancellation_requested",
+          "version",
+          "total_cost_usd",
+          "started_at",
+          "updated_at",
+          "completed_at",
+          "steps",
+          "tool_invocations",
+          "approvals",
+          "checkpoints"
+        ],
+        "title": "ResearchRunResponse"
+      },
+      "ResearchRunStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "waiting_approval",
+          "paused",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "budget_exhausted",
+          "timed_out"
+        ],
+        "title": "ResearchRunStatus"
+      },
+      "ResearchStepResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "ordinal": {
+            "type": "integer",
+            "title": "Ordinal"
+          },
+          "node_name": {
+            "type": "string",
+            "title": "Node Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ResearchStepStatus"
+          },
+          "input_summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Summary"
+          },
+          "output_summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Output Summary"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "latency_ms": {
+            "type": "integer",
+            "title": "Latency Ms"
+          },
+          "started_at": {
+            "type": "string",
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "ordinal",
+          "node_name",
+          "status",
+          "input_summary",
+          "output_summary",
+          "error_code",
+          "error_message",
+          "latency_ms",
+          "started_at",
+          "completed_at"
+        ],
+        "title": "ResearchStepResponse"
+      },
+      "ResearchStepStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "succeeded",
+          "failed",
+          "skipped"
+        ],
+        "title": "ResearchStepStatus"
+      },
       "Role": {
         "type": "string",
         "enum": [
@@ -4338,6 +5194,97 @@
           "upload"
         ],
         "title": "SourceType"
+      },
+      "ToolInvocationResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "research_step_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Research Step Id"
+          },
+          "tool_name": {
+            "type": "string",
+            "title": "Tool Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ToolInvocationStatus"
+          },
+          "input_summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Summary"
+          },
+          "output_summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Output Summary"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "title": "Idempotency Key"
+          },
+          "latency_ms": {
+            "type": "integer",
+            "title": "Latency Ms"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "research_step_id",
+          "tool_name",
+          "status",
+          "input_summary",
+          "output_summary",
+          "idempotency_key",
+          "latency_ms",
+          "error_code",
+          "error_message",
+          "created_at"
+        ],
+        "title": "ToolInvocationResponse"
+      },
+      "ToolInvocationStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "succeeded",
+          "failed",
+          "blocked"
+        ],
+        "title": "ToolInvocationStatus"
       },
       "UploadFinalize": {
         "properties": {

@@ -11,6 +11,7 @@ from atlas_api.api.dependencies import (
     AnswerServiceDependency,
     DocumentServiceDependency,
     EvaluationServiceDependency,
+    ResearchServiceDependency,
     SemanticSearchServiceDependency,
     WorkspaceServiceDependency,
 )
@@ -43,6 +44,11 @@ from atlas_api.api.schemas import (
     MemberResponse,
     MemberUpdate,
     MeResponse,
+    ResearchApprovalDecision,
+    ResearchRunCancel,
+    ResearchRunCreate,
+    ResearchRunListResponse,
+    ResearchRunResponse,
     SearchRequest,
     SearchResponse,
     SemanticSearchRequest,
@@ -664,6 +670,135 @@ async def approve_evaluation_baseline(
         notes=payload.notes,
     )
     return EvaluationBaselineResponse.from_record(record)
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/research-runs",
+    response_model=ResearchRunListResponse,
+    tags=["research"],
+)
+async def list_research_runs(
+    workspace_id: uuid.UUID,
+    actor: ActorDependency,
+    service: ResearchServiceDependency,
+    limit: int = 10,
+) -> ResearchRunListResponse:
+    records = await service.list_research_runs(actor=actor, workspace_id=workspace_id, limit=limit)
+    return ResearchRunListResponse(
+        items=[ResearchRunResponse.from_record(item) for item in records]
+    )
+
+
+@router.post(
+    "/v1/workspaces/{workspace_id}/research-runs",
+    response_model=ResearchRunResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["research"],
+)
+async def create_research_run(
+    workspace_id: uuid.UUID,
+    payload: ResearchRunCreate,
+    response: Response,
+    actor: ActorDependency,
+    service: ResearchServiceDependency,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ResearchRunResponse:
+    if idempotency_key is None:
+        raise ValidationError("Idempotency-Key is required.")
+    record, replayed = await service.create_research_run(
+        actor=actor,
+        workspace_id=workspace_id,
+        purpose=payload.purpose,
+        question=payload.question,
+        idempotency_key=idempotency_key,
+    )
+    if replayed:
+        response.status_code = status.HTTP_200_OK
+        response.headers["Idempotent-Replayed"] = "true"
+    return ResearchRunResponse.from_record(record)
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/research-runs/{research_run_id}",
+    response_model=ResearchRunResponse,
+    tags=["research"],
+)
+async def get_research_run(
+    workspace_id: uuid.UUID,
+    research_run_id: uuid.UUID,
+    actor: ActorDependency,
+    service: ResearchServiceDependency,
+) -> ResearchRunResponse:
+    return ResearchRunResponse.from_record(
+        await service.get_research_run(
+            actor=actor, workspace_id=workspace_id, run_id=research_run_id
+        )
+    )
+
+
+@router.post(
+    "/v1/workspaces/{workspace_id}/research-runs/{research_run_id}/resume",
+    response_model=ResearchRunResponse,
+    tags=["research"],
+)
+async def resume_research_run(
+    workspace_id: uuid.UUID,
+    research_run_id: uuid.UUID,
+    actor: ActorDependency,
+    service: ResearchServiceDependency,
+) -> ResearchRunResponse:
+    return ResearchRunResponse.from_record(
+        await service.resume_research_run(
+            actor=actor, workspace_id=workspace_id, run_id=research_run_id
+        )
+    )
+
+
+@router.post(
+    "/v1/workspaces/{workspace_id}/research-runs/{research_run_id}/cancel",
+    response_model=ResearchRunResponse,
+    tags=["research"],
+)
+async def cancel_research_run(
+    workspace_id: uuid.UUID,
+    research_run_id: uuid.UUID,
+    payload: ResearchRunCancel,
+    actor: ActorDependency,
+    service: ResearchServiceDependency,
+) -> ResearchRunResponse:
+    return ResearchRunResponse.from_record(
+        await service.cancel_research_run(
+            actor=actor,
+            workspace_id=workspace_id,
+            run_id=research_run_id,
+            expected_version=payload.version,
+        )
+    )
+
+
+@router.post(
+    "/v1/workspaces/{workspace_id}/research-runs/{research_run_id}/approvals/{approval_id}",
+    response_model=ResearchRunResponse,
+    tags=["research"],
+)
+async def decide_research_approval(
+    workspace_id: uuid.UUID,
+    research_run_id: uuid.UUID,
+    approval_id: uuid.UUID,
+    payload: ResearchApprovalDecision,
+    actor: ActorDependency,
+    service: ResearchServiceDependency,
+) -> ResearchRunResponse:
+    return ResearchRunResponse.from_record(
+        await service.decide_approval(
+            actor=actor,
+            workspace_id=workspace_id,
+            run_id=research_run_id,
+            approval_id=approval_id,
+            expected_version=payload.version,
+            approved=payload.approved,
+        )
+    )
 
 
 @router.post(

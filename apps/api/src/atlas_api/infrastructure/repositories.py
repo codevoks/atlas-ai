@@ -18,6 +18,7 @@ from atlas_api.application.ports import (
     AnswerEvidenceDraft,
     AnswerEvidenceRecord,
     AnswerRunRecord,
+    CheckpointRecord,
     ChunkDraftRecord,
     ChunkEmbeddingDraftRecord,
     ChunkEmbeddingWriteRecord,
@@ -38,9 +39,16 @@ from atlas_api.application.ports import (
     IngestionJobRecord,
     MemberRecord,
     MissingEmbeddingChunkRecord,
+    ResearchApprovalRecord,
+    ResearchRunRecord,
+    ResearchStepDraft,
+    ResearchStepRecord,
+    ResearchStore,
     SearchCandidate,
     SearchFilter,
     SourceRecord,
+    ToolInvocationDraft,
+    ToolInvocationRecord,
     Transaction,
     UploadIntentRecord,
     ValidatedCitationRecord,
@@ -51,6 +59,7 @@ from atlas_api.domain.errors import ConflictError, ResourceNotFoundError
 from atlas_api.domain.models import (
     Actor,
     AnswerRunStatus,
+    ApprovalStatus,
     ChunkEmbeddingStatus,
     CitationValidationStatus,
     DocumentStatus,
@@ -63,10 +72,13 @@ from atlas_api.domain.models import (
     IngestionJobState,
     MembershipContext,
     MembershipStatus,
+    ResearchRunStatus,
+    ResearchStepStatus,
     RetryClass,
     Role,
     SourceStatus,
     SourceType,
+    ToolInvocationStatus,
     UploadIntentStatus,
 )
 from atlas_api.infrastructure.models import (
@@ -89,7 +101,12 @@ from atlas_api.infrastructure.models import (
     IngestionJobModel,
     JobEventModel,
     MembershipModel,
+    ResearchApprovalModel,
+    ResearchCheckpointModel,
+    ResearchRunModel,
+    ResearchStepModel,
     SourceModel,
+    ToolInvocationModel,
     UploadIntentModel,
     UserModel,
     WorkspaceModel,
@@ -2353,18 +2370,480 @@ class SqlAlchemyIngestionJobStore:
         )
 
 
+class SqlAlchemyResearchStore:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def create_research_run(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        purpose: str,
+        question: str,
+        graph_version: str,
+        config_version: str,
+        model_versions: dict[str, str],
+        input_hash: str,
+        budget: dict[str, object],
+        idempotency_key: str,
+        request_hash: str,
+    ) -> tuple[ResearchRunRecord, bool]:
+        key_hash = _sha256(idempotency_key)
+        lock_id = _advisory_lock_id(f"{actor.user_id}:research:create:{key_hash}")
+        await self._session.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": lock_id}
+        )
+        existing = await self._session.scalar(
+            select(ResearchRunModel).where(
+                ResearchRunModel.created_by_user_id == actor.user_id,
+                ResearchRunModel.idempotency_key_hash == key_hash,
+            )
+        )
+        if existing is not None:
+            if existing.request_hash != request_hash:
+                raise ConflictError("The idempotency key was already used for a different request.")
+            return await self._research_run_record(existing), True
+
+        run = ResearchRunModel(
+            workspace_id=workspace_id,
+            created_by_user_id=actor.user_id,
+            purpose=purpose,
+            question=question,
+            status=ResearchRunStatus.PENDING.value,
+            graph_version=graph_version,
+            config_version=config_version,
+            model_versions=model_versions,
+            input_hash=input_hash,
+            idempotency_key_hash=key_hash,
+            request_hash=request_hash,
+            budget=budget,
+            usage={
+                "steps": 0,
+                "tool_calls": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cost_usd": 0.0,
+                "paid_services": False,
+            },
+            report_text=None,
+            evidence=[],
+            warnings=[],
+            terminal_reason=None,
+            cancellation_requested=False,
+            version=1,
+            total_cost_usd=0.0,
+        )
+        self._session.add(run)
+        await self._session.flush()
+        return await self._research_run_record(run), False
+
+    async def get_research_run(
+        self, workspace_id: uuid.UUID, research_run_id: uuid.UUID
+    ) -> ResearchRunRecord | None:
+        run = await self._session.scalar(
+            select(ResearchRunModel).where(
+                ResearchRunModel.workspace_id == workspace_id,
+                ResearchRunModel.id == research_run_id,
+            )
+        )
+        return None if run is None else await self._research_run_record(run)
+
+    async def list_research_runs(
+        self, workspace_id: uuid.UUID, *, limit: int
+    ) -> list[ResearchRunRecord]:
+        rows = (
+            await self._session.scalars(
+                select(ResearchRunModel)
+                .where(ResearchRunModel.workspace_id == workspace_id)
+                .order_by(ResearchRunModel.started_at.desc(), ResearchRunModel.id.desc())
+                .limit(limit)
+            )
+        ).all()
+        return [await self._research_run_record(row) for row in rows]
+
+    async def append_research_progress(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        research_run_id: uuid.UUID,
+        expected_version: int,
+        status: ResearchRunStatus,
+        usage: dict[str, object],
+        report_text: str | None,
+        evidence: list[dict[str, object]],
+        warnings: list[str],
+        terminal_reason: str | None,
+        steps: list[ResearchStepDraft],
+        tool_invocations: list[ToolInvocationDraft],
+        checkpoint: dict[str, object],
+        approval: ResearchApprovalRecord | None = None,
+    ) -> ResearchRunRecord:
+        run = await self._locked_run(workspace_id, research_run_id, expected_version)
+        now = datetime.now(UTC)
+        run.status = status.value
+        run.usage = usage
+        run.report_text = report_text
+        run.evidence = evidence
+        run.warnings = warnings
+        run.terminal_reason = terminal_reason
+        cost_value = usage.get("cost_usd", 0.0)
+        run.total_cost_usd = float(cost_value) if isinstance(cost_value, int | float) else 0.0
+        run.version += 1
+        run.updated_at = now
+        if status in {
+            ResearchRunStatus.SUCCEEDED,
+            ResearchRunStatus.FAILED,
+            ResearchRunStatus.CANCELLED,
+            ResearchRunStatus.BUDGET_EXHAUSTED,
+            ResearchRunStatus.TIMED_OUT,
+        }:
+            run.completed_at = now
+
+        step_by_ordinal = await self._step_rows_by_ordinal(workspace_id, research_run_id)
+        for step in steps:
+            if step.ordinal in step_by_ordinal:
+                continue
+            row = ResearchStepModel(
+                workspace_id=workspace_id,
+                research_run_id=research_run_id,
+                ordinal=step.ordinal,
+                node_name=step.node_name,
+                status=step.status.value,
+                input_summary=step.input_summary,
+                output_summary=step.output_summary,
+                error_code=step.error_code,
+                error_message=step.error_message,
+                latency_ms=step.latency_ms,
+                completed_at=now if step.status is ResearchStepStatus.SUCCEEDED else None,
+            )
+            self._session.add(row)
+            await self._session.flush()
+            step_by_ordinal[step.ordinal] = row
+
+        existing_tool_keys = set(
+            await self._session.scalars(
+                select(ToolInvocationModel.idempotency_key).where(
+                    ToolInvocationModel.workspace_id == workspace_id,
+                    ToolInvocationModel.research_run_id == research_run_id,
+                )
+            )
+        )
+        for invocation in tool_invocations:
+            if invocation.idempotency_key in existing_tool_keys:
+                continue
+            step_row = step_by_ordinal[invocation.step_ordinal]
+            self._session.add(
+                ToolInvocationModel(
+                    workspace_id=workspace_id,
+                    research_run_id=research_run_id,
+                    research_step_id=step_row.id,
+                    tool_name=invocation.tool_name,
+                    status=invocation.status.value,
+                    input_summary=invocation.input_summary,
+                    output_summary=invocation.output_summary,
+                    idempotency_key=invocation.idempotency_key,
+                    latency_ms=invocation.latency_ms,
+                    error_code=invocation.error_code,
+                    error_message=invocation.error_message,
+                )
+            )
+
+        self._session.add(
+            ResearchCheckpointModel(
+                workspace_id=workspace_id,
+                research_run_id=research_run_id,
+                schema_version=str(checkpoint.get("schema_version", "unknown")),
+                state=checkpoint,
+            )
+        )
+        await self._session.flush()
+        return await self._research_run_record(run)
+
+    async def request_approval(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        research_run_id: uuid.UUID,
+        expected_run_version: int,
+        approval_type: str,
+        reason: str,
+        approval_payload: dict[str, object],
+    ) -> ResearchRunRecord:
+        run = await self._locked_run(workspace_id, research_run_id, expected_run_version)
+        if run.status not in {ResearchRunStatus.RUNNING.value, ResearchRunStatus.PENDING.value}:
+            raise ConflictError("Research run is not ready for approval.")
+        run.status = ResearchRunStatus.WAITING_APPROVAL.value
+        run.version += 1
+        run.updated_at = datetime.now(UTC)
+        self._session.add(
+            ResearchApprovalModel(
+                workspace_id=workspace_id,
+                research_run_id=research_run_id,
+                requested_by_user_id=actor.user_id,
+                approved_by_user_id=None,
+                status=ApprovalStatus.PENDING.value,
+                approval_type=approval_type,
+                reason=reason,
+                approval_payload=approval_payload,
+                version=1,
+            )
+        )
+        await self._session.flush()
+        return await self._research_run_record(run)
+
+    async def decide_approval(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        research_run_id: uuid.UUID,
+        approval_id: uuid.UUID,
+        expected_version: int,
+        approved: bool,
+    ) -> ResearchRunRecord:
+        approval = await self._session.scalar(
+            select(ResearchApprovalModel)
+            .where(
+                ResearchApprovalModel.workspace_id == workspace_id,
+                ResearchApprovalModel.research_run_id == research_run_id,
+                ResearchApprovalModel.id == approval_id,
+            )
+            .with_for_update()
+        )
+        if approval is None:
+            raise ResourceNotFoundError()
+        if approval.version != expected_version:
+            raise ConflictError("Approval version is stale.")
+        if approval.status != ApprovalStatus.PENDING.value:
+            raise ConflictError("Approval has already been decided.")
+        approval.status = ApprovalStatus.APPROVED.value if approved else ApprovalStatus.DENIED.value
+        approval.approved_by_user_id = actor.user_id
+        approval.decided_at = datetime.now(UTC)
+        approval.version += 1
+        run = await self._session.scalar(
+            select(ResearchRunModel)
+            .where(
+                ResearchRunModel.workspace_id == workspace_id,
+                ResearchRunModel.id == research_run_id,
+            )
+            .with_for_update()
+        )
+        if run is None:
+            raise ResourceNotFoundError()
+        run.version += 1
+        run.updated_at = datetime.now(UTC)
+        if not approved:
+            run.status = ResearchRunStatus.CANCELLED.value
+            run.terminal_reason = "approval_denied"
+            run.completed_at = datetime.now(UTC)
+        await self._session.flush()
+        return await self._research_run_record(run)
+
+    async def cancel_research_run(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        research_run_id: uuid.UUID,
+        expected_version: int,
+    ) -> ResearchRunRecord:
+        run = await self._locked_run(workspace_id, research_run_id, expected_version)
+        if run.status in {
+            ResearchRunStatus.SUCCEEDED.value,
+            ResearchRunStatus.FAILED.value,
+            ResearchRunStatus.CANCELLED.value,
+            ResearchRunStatus.BUDGET_EXHAUSTED.value,
+            ResearchRunStatus.TIMED_OUT.value,
+        }:
+            raise ConflictError("Research run is already terminal.")
+        now = datetime.now(UTC)
+        run.status = ResearchRunStatus.CANCELLED.value
+        run.cancellation_requested = True
+        run.terminal_reason = "cancelled_by_user"
+        run.version += 1
+        run.updated_at = now
+        run.completed_at = now
+        await self._session.flush()
+        return await self._research_run_record(run)
+
+    async def _locked_run(
+        self, workspace_id: uuid.UUID, research_run_id: uuid.UUID, expected_version: int
+    ) -> ResearchRunModel:
+        run = await self._session.scalar(
+            select(ResearchRunModel)
+            .where(
+                ResearchRunModel.workspace_id == workspace_id,
+                ResearchRunModel.id == research_run_id,
+            )
+            .with_for_update()
+        )
+        if run is None:
+            raise ResourceNotFoundError()
+        if run.version != expected_version:
+            raise ConflictError("Research run version is stale.")
+        return run
+
+    async def _step_rows_by_ordinal(
+        self, workspace_id: uuid.UUID, research_run_id: uuid.UUID
+    ) -> dict[int, ResearchStepModel]:
+        rows = (
+            await self._session.scalars(
+                select(ResearchStepModel).where(
+                    ResearchStepModel.workspace_id == workspace_id,
+                    ResearchStepModel.research_run_id == research_run_id,
+                )
+            )
+        ).all()
+        return {row.ordinal: row for row in rows}
+
+    async def _research_run_record(self, run: ResearchRunModel) -> ResearchRunRecord:
+        steps = (
+            await self._session.scalars(
+                select(ResearchStepModel)
+                .where(
+                    ResearchStepModel.workspace_id == run.workspace_id,
+                    ResearchStepModel.research_run_id == run.id,
+                )
+                .order_by(ResearchStepModel.ordinal.asc())
+            )
+        ).all()
+        tools = (
+            await self._session.scalars(
+                select(ToolInvocationModel)
+                .where(
+                    ToolInvocationModel.workspace_id == run.workspace_id,
+                    ToolInvocationModel.research_run_id == run.id,
+                )
+                .order_by(ToolInvocationModel.created_at.asc(), ToolInvocationModel.id.asc())
+            )
+        ).all()
+        approvals = (
+            await self._session.scalars(
+                select(ResearchApprovalModel)
+                .where(
+                    ResearchApprovalModel.workspace_id == run.workspace_id,
+                    ResearchApprovalModel.research_run_id == run.id,
+                )
+                .order_by(ResearchApprovalModel.created_at.asc(), ResearchApprovalModel.id.asc())
+            )
+        ).all()
+        checkpoints = (
+            await self._session.scalars(
+                select(ResearchCheckpointModel)
+                .where(
+                    ResearchCheckpointModel.workspace_id == run.workspace_id,
+                    ResearchCheckpointModel.research_run_id == run.id,
+                )
+                .order_by(
+                    ResearchCheckpointModel.created_at.asc(), ResearchCheckpointModel.id.asc()
+                )
+            )
+        ).all()
+        return ResearchRunRecord(
+            id=run.id,
+            workspace_id=run.workspace_id,
+            created_by_user_id=run.created_by_user_id,
+            purpose=run.purpose,
+            question=run.question,
+            status=ResearchRunStatus(run.status),
+            graph_version=run.graph_version,
+            config_version=run.config_version,
+            model_versions={str(key): str(value) for key, value in run.model_versions.items()},
+            input_hash=run.input_hash,
+            budget=run.budget,
+            usage=run.usage,
+            report_text=run.report_text,
+            evidence=run.evidence,
+            warnings=list(run.warnings),
+            terminal_reason=run.terminal_reason,
+            cancellation_requested=run.cancellation_requested,
+            version=run.version,
+            total_cost_usd=run.total_cost_usd,
+            started_at=run.started_at,
+            updated_at=run.updated_at,
+            completed_at=run.completed_at,
+            steps=[
+                ResearchStepRecord(
+                    id=step.id,
+                    workspace_id=step.workspace_id,
+                    research_run_id=step.research_run_id,
+                    ordinal=step.ordinal,
+                    node_name=step.node_name,
+                    status=ResearchStepStatus(step.status),
+                    input_summary=step.input_summary,
+                    output_summary=step.output_summary,
+                    error_code=step.error_code,
+                    error_message=step.error_message,
+                    latency_ms=step.latency_ms,
+                    started_at=step.started_at,
+                    completed_at=step.completed_at,
+                )
+                for step in steps
+            ],
+            tool_invocations=[
+                ToolInvocationRecord(
+                    id=tool.id,
+                    workspace_id=tool.workspace_id,
+                    research_run_id=tool.research_run_id,
+                    research_step_id=tool.research_step_id,
+                    tool_name=tool.tool_name,
+                    status=ToolInvocationStatus(tool.status),
+                    input_summary=tool.input_summary,
+                    output_summary=tool.output_summary,
+                    idempotency_key=tool.idempotency_key,
+                    latency_ms=tool.latency_ms,
+                    error_code=tool.error_code,
+                    error_message=tool.error_message,
+                    created_at=tool.created_at,
+                )
+                for tool in tools
+            ],
+            approvals=[
+                ResearchApprovalRecord(
+                    id=approval.id,
+                    workspace_id=approval.workspace_id,
+                    research_run_id=approval.research_run_id,
+                    requested_by_user_id=approval.requested_by_user_id,
+                    approved_by_user_id=approval.approved_by_user_id,
+                    status=ApprovalStatus(approval.status),
+                    approval_type=approval.approval_type,
+                    reason=approval.reason,
+                    approval_payload=approval.approval_payload,
+                    version=approval.version,
+                    created_at=approval.created_at,
+                    decided_at=approval.decided_at,
+                )
+                for approval in approvals
+            ],
+            checkpoints=[
+                CheckpointRecord(
+                    id=checkpoint.id,
+                    workspace_id=checkpoint.workspace_id,
+                    research_run_id=checkpoint.research_run_id,
+                    schema_version=checkpoint.schema_version,
+                    state=checkpoint.state,
+                    created_at=checkpoint.created_at,
+                )
+                for checkpoint in checkpoints
+            ],
+        )
+
+
 class SqlAlchemyTransaction:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
         self._session: AsyncSession | None = None
         self.workspaces: WorkspaceStore
         self.documents: DocumentStore
+        self.research: ResearchStore
 
     async def __aenter__(self) -> SqlAlchemyTransaction:
         self._session = self._session_factory()
         await self._session.begin()
         self.workspaces = SqlAlchemyWorkspaceStore(self._session)
         self.documents = SqlAlchemyDocumentStore(self._session)
+        self.research = SqlAlchemyResearchStore(self._session)
         return self
 
     async def __aexit__(

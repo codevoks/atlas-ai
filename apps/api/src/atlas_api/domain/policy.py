@@ -21,6 +21,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.DOCUMENT_DELETE,
             Permission.INGESTION_JOB_READ,
             Permission.INGESTION_JOB_MANAGE,
+            Permission.RESEARCH_RUN_READ,
+            Permission.RESEARCH_RUN_MANAGE,
         }
     ),
     Role.MEMBER: frozenset(
@@ -33,6 +35,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.DOCUMENT_CREATE,
             Permission.DOCUMENT_DELETE,
             Permission.INGESTION_JOB_READ,
+            Permission.RESEARCH_RUN_READ,
+            Permission.RESEARCH_RUN_MANAGE,
         }
     ),
     Role.VIEWER: frozenset(
@@ -41,6 +45,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.SOURCE_READ,
             Permission.DOCUMENT_READ,
             Permission.INGESTION_JOB_READ,
+            Permission.RESEARCH_RUN_READ,
         }
     ),
 }

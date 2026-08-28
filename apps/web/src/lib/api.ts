@@ -151,6 +151,90 @@ export interface EvaluationRun {
   results: EvaluationResult[];
 }
 
+export interface ResearchApproval {
+  id: string;
+  status: "pending" | "approved" | "denied" | "stale";
+  approval_type: string;
+  reason: string;
+  approval_payload: Record<string, unknown>;
+  version: number;
+  created_at: string;
+  decided_at: string | null;
+}
+
+export interface ResearchStep {
+  id: string;
+  ordinal: number;
+  node_name: string;
+  status: string;
+  input_summary: Record<string, unknown>;
+  output_summary: Record<string, unknown>;
+  error_code: string | null;
+  error_message: string | null;
+  latency_ms: number;
+  started_at: string;
+  completed_at: string | null;
+}
+
+export interface ResearchToolInvocation {
+  id: string;
+  research_step_id: string;
+  tool_name: string;
+  status: string;
+  input_summary: Record<string, unknown>;
+  output_summary: Record<string, unknown>;
+  idempotency_key: string;
+  latency_ms: number;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+}
+
+export interface ResearchCheckpoint {
+  id: string;
+  schema_version: string;
+  state_summary: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface ResearchRun {
+  id: string;
+  workspace_id: string;
+  created_by_user_id: string;
+  purpose: string;
+  question: string;
+  status:
+    | "pending"
+    | "running"
+    | "waiting_approval"
+    | "paused"
+    | "succeeded"
+    | "failed"
+    | "cancelled"
+    | "budget_exhausted"
+    | "timed_out";
+  graph_version: string;
+  config_version: string;
+  model_versions: Record<string, string>;
+  input_hash: string;
+  budget: Record<string, unknown>;
+  usage: Record<string, unknown>;
+  report_text: string | null;
+  evidence: Record<string, unknown>[];
+  warnings: string[];
+  terminal_reason: string | null;
+  cancellation_requested: boolean;
+  version: number;
+  total_cost_usd: number;
+  started_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  steps: ResearchStep[];
+  tool_invocations: ResearchToolInvocation[];
+  approvals: ResearchApproval[];
+  checkpoints: ResearchCheckpoint[];
+}
+
 interface ApiErrorPayload {
   error?: { code?: string; message?: string; request_id?: string };
 }
@@ -298,4 +382,44 @@ export async function getEvaluationRuns(workspaceId: string): Promise<Evaluation
     `/v1/workspaces/${workspaceId}/evaluation-runs?limit=5`,
   );
   return payload.items;
+}
+
+export async function getResearchRuns(workspaceId: string): Promise<ResearchRun[]> {
+  const payload = await apiRequest<{ items: ResearchRun[] }>(
+    `/v1/workspaces/${workspaceId}/research-runs?limit=5`,
+  );
+  return payload.items;
+}
+
+export async function createResearchRun(
+  workspaceId: string,
+  purpose: string,
+  question: string,
+): Promise<ResearchRun> {
+  return apiRequest<ResearchRun>(`/v1/workspaces/${workspaceId}/research-runs`, {
+    method: "POST",
+    headers: {
+      "Idempotency-Key": `research-${workspaceId}-${Buffer.from(`${purpose}:${question}`)
+        .toString("base64")
+        .replace(/[^a-zA-Z0-9]/g, "")
+        .slice(0, 64)}`,
+    },
+    body: JSON.stringify({ purpose, question }),
+  });
+}
+
+export async function decideResearchApproval(
+  workspaceId: string,
+  runId: string,
+  approvalId: string,
+  version: number,
+  approved: boolean,
+): Promise<ResearchRun> {
+  return apiRequest<ResearchRun>(
+    `/v1/workspaces/${workspaceId}/research-runs/${runId}/approvals/${approvalId}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ version, approved }),
+    },
+  );
 }

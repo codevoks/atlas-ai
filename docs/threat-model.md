@@ -228,3 +228,28 @@ Residual risks and deferrals:
 - Query expansion can still introduce intent drift in domains not covered by fixtures. Additional mappings require evaluation evidence and slice review.
 - Contextual chunk projections, learned fusion, hosted/LLM query rewriters, personalization, online experimentation, LlamaIndex components, OpenSearch, and automatic promotion remain deferred.
 - Production debug access to transformed queries should be role-gated and retention-controlled before external customer exposure.
+
+## Phase 9 implementation security review
+
+Phase 9 adds one bounded research workflow with persisted steps, tool invocations, checkpoints, human approvals, and cited report synthesis.
+
+Security controls implemented:
+
+- Research runs are workspace-scoped and require active membership plus `research_run:read` or `research_run:manage` permission at every API entrypoint.
+- Clients cannot submit arbitrary graph state, tool names, URLs, prompts, budgets, or provider configuration. The server selects the graph version, deterministic local tools, retrieval config, and fixed budget.
+- The allowlisted tool set is limited to `atlas_retrieval` and `local_policy_catalog`. There is no shell, browser, arbitrary HTTP, code execution, connector, or paid provider tool in the default path.
+- Prompt-injection and SSRF-like inputs that request forbidden tools, URLs, local metadata endpoints, secrets, or instruction overrides are rejected before run persistence.
+- Atlas retrieval inside the graph reuses the Phase 8 search service, so tenant membership, document/source filters, ready active version constraints, retrieval budgets, and provenance all remain enforced.
+- Tool invocations use stable idempotency keys and sanitized input/output summaries; raw hidden graph state is not exposed through the public API.
+- Checkpoints are schema-versioned and persisted before the approval boundary so restart/resume can inspect progress without repeating completed tool records.
+- Final synthesis is blocked until an authorized user submits a current approval version. Stale approvals fail with conflict, and denied approvals terminate the run as cancelled.
+- Budget usage records steps, tool calls, tokens, cost, and paid-service status. The default budget has zero paid cost and bounded step/tool/token ceilings.
+- Research reports cite only previously retrieved workspace evidence and retain evidence/tool provenance for inspection.
+
+Residual risks and deferrals:
+
+- The Phase 9 graph runner is deterministic and local. It proves the workflow/data/security contract but is not a general autonomous agent runtime.
+- LangGraph remains behind the `ResearchGraph` boundary for a later adapter swap once dependency, checkpoint, retry, and failure-mode evidence justify adopting the runtime package in the default stack.
+- External web/search/connectors, egress controls, redirect handling, robots/policy rules, and billable provider approvals remain deferred.
+- Multi-agent research is not implemented. It requires benchmark evidence showing material quality or latency improvement over this bounded workflow plus a coordination/failure/evaluation design.
+- Production retention and export policy for research questions, reports, tool summaries, and checkpoints remains deployment-specific hardening work.

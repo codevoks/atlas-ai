@@ -95,6 +95,9 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px c
 .search-result { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-raised); padding: 16px; }
 .search-result div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .search-result p { color: var(--ink); margin: 0; line-height: 1.55; }
+.approval-box, .report-preview { display: grid !important; align-items: stretch !important; justify-content: stretch !important; gap: 10px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--accent-soft), transparent 45%); padding: 14px; }
+.button-row { display: flex; align-items: center; justify-content: flex-start; gap: 10px; }
+.report-preview pre { margin: 0; max-height: 360px; overflow: auto; white-space: pre-wrap; color: var(--ink); font-family: var(--font-mono), monospace; font-size: 0.82rem; line-height: 1.55; }
 .mono { font-family: var(--font-mono), monospace; font-size: 0.8rem; }
 .chunk-preview { max-width: 560px; border-left: 2px solid var(--accent-soft); padding-left: 10px; color: #c4d1c8; }
 .members-layout { padding-top: 10px; }

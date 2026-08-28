@@ -9,6 +9,7 @@ from typing import Literal, Protocol
 from atlas_api.domain.models import (
     Actor,
     AnswerRunStatus,
+    ApprovalStatus,
     ChunkEmbeddingStatus,
     CitationValidationStatus,
     DocumentStatus,
@@ -19,9 +20,12 @@ from atlas_api.domain.models import (
     EvaluationRunStatus,
     IngestionJobState,
     MembershipContext,
+    ResearchRunStatus,
+    ResearchStepStatus,
     Role,
     SourceStatus,
     SourceType,
+    ToolInvocationStatus,
     UploadIntentStatus,
 )
 
@@ -420,6 +424,131 @@ class EvaluationBaselineRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class ResearchBudget:
+    max_steps: int
+    max_tool_calls: int
+    max_input_tokens: int
+    max_output_tokens: int
+    max_cost_usd: float
+    max_wall_time_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class ResearchStepDraft:
+    ordinal: int
+    node_name: str
+    status: ResearchStepStatus
+    input_summary: dict[str, object]
+    output_summary: dict[str, object]
+    error_code: str | None = None
+    error_message: str | None = None
+    latency_ms: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class ToolInvocationDraft:
+    step_ordinal: int
+    tool_name: str
+    status: ToolInvocationStatus
+    input_summary: dict[str, object]
+    output_summary: dict[str, object]
+    idempotency_key: str
+    latency_ms: int = 0
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ResearchApprovalRecord:
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    research_run_id: uuid.UUID
+    requested_by_user_id: uuid.UUID
+    approved_by_user_id: uuid.UUID | None
+    status: ApprovalStatus
+    approval_type: str
+    reason: str
+    approval_payload: dict[str, object]
+    version: int
+    created_at: datetime
+    decided_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class ResearchStepRecord:
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    research_run_id: uuid.UUID
+    ordinal: int
+    node_name: str
+    status: ResearchStepStatus
+    input_summary: dict[str, object]
+    output_summary: dict[str, object]
+    error_code: str | None
+    error_message: str | None
+    latency_ms: int
+    started_at: datetime
+    completed_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class ToolInvocationRecord:
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    research_run_id: uuid.UUID
+    research_step_id: uuid.UUID
+    tool_name: str
+    status: ToolInvocationStatus
+    input_summary: dict[str, object]
+    output_summary: dict[str, object]
+    idempotency_key: str
+    latency_ms: int
+    error_code: str | None
+    error_message: str | None
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class CheckpointRecord:
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    research_run_id: uuid.UUID
+    schema_version: str
+    state: dict[str, object]
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ResearchRunRecord:
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    created_by_user_id: uuid.UUID
+    purpose: str
+    question: str
+    status: ResearchRunStatus
+    graph_version: str
+    config_version: str
+    model_versions: dict[str, str]
+    input_hash: str
+    budget: dict[str, object]
+    usage: dict[str, object]
+    report_text: str | None
+    evidence: list[dict[str, object]]
+    warnings: list[str]
+    terminal_reason: str | None
+    cancellation_requested: bool
+    version: int
+    total_cost_usd: float
+    started_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None
+    steps: list[ResearchStepRecord]
+    tool_invocations: list[ToolInvocationRecord]
+    approvals: list[ResearchApprovalRecord]
+    checkpoints: list[CheckpointRecord]
+
+
+@dataclass(frozen=True, slots=True)
 class IngestionJobRecord:
     id: uuid.UUID
     workspace_id: uuid.UUID
@@ -720,9 +849,85 @@ class DocumentStore(Protocol):
     ) -> EvaluationBaselineRecord: ...
 
 
+class ResearchStore(Protocol):
+    async def create_research_run(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        purpose: str,
+        question: str,
+        graph_version: str,
+        config_version: str,
+        model_versions: dict[str, str],
+        input_hash: str,
+        budget: dict[str, object],
+        idempotency_key: str,
+        request_hash: str,
+    ) -> tuple[ResearchRunRecord, bool]: ...
+
+    async def get_research_run(
+        self, workspace_id: uuid.UUID, research_run_id: uuid.UUID
+    ) -> ResearchRunRecord | None: ...
+
+    async def list_research_runs(
+        self, workspace_id: uuid.UUID, *, limit: int
+    ) -> list[ResearchRunRecord]: ...
+
+    async def append_research_progress(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        research_run_id: uuid.UUID,
+        expected_version: int,
+        status: ResearchRunStatus,
+        usage: dict[str, object],
+        report_text: str | None,
+        evidence: list[dict[str, object]],
+        warnings: list[str],
+        terminal_reason: str | None,
+        steps: list[ResearchStepDraft],
+        tool_invocations: list[ToolInvocationDraft],
+        checkpoint: dict[str, object],
+        approval: ResearchApprovalRecord | None = None,
+    ) -> ResearchRunRecord: ...
+
+    async def request_approval(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        research_run_id: uuid.UUID,
+        expected_run_version: int,
+        approval_type: str,
+        reason: str,
+        approval_payload: dict[str, object],
+    ) -> ResearchRunRecord: ...
+
+    async def decide_approval(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        research_run_id: uuid.UUID,
+        approval_id: uuid.UUID,
+        expected_version: int,
+        approved: bool,
+    ) -> ResearchRunRecord: ...
+
+    async def cancel_research_run(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        research_run_id: uuid.UUID,
+        expected_version: int,
+    ) -> ResearchRunRecord: ...
+
+
 class Transaction(Protocol):
     workspaces: WorkspaceStore
     documents: DocumentStore
+    research: ResearchStore
 
     async def __aenter__(self) -> Transaction: ...
 

@@ -10,6 +10,7 @@ import {
   apiRequest,
   AtlasApiError,
   type Member,
+  type ResearchRun,
   type Source,
   type UploadFinalizeResult,
   type UploadIntent,
@@ -214,6 +215,48 @@ export async function deleteDocumentAction(formData: FormData): Promise<void> {
     await apiRequest<void>(`/v1/workspaces/${workspaceId}/documents/${documentId}`, {
       method: "DELETE",
     });
+    revalidatePath(`/workspaces/${workspaceId}`);
+  } catch (error) {
+    destination += `?error=${encodeURIComponent(messageFor(error))}`;
+  }
+  redirect(destination);
+}
+
+export async function createResearchRunAction(formData: FormData): Promise<void> {
+  const workspaceId = String(formData.get("workspaceId") ?? "");
+  let destination = `/workspaces/${workspaceId}`;
+  try {
+    await apiRequest<ResearchRun>(`/v1/workspaces/${workspaceId}/research-runs`, {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({
+        purpose: String(formData.get("purpose") ?? ""),
+        question: String(formData.get("question") ?? ""),
+      }),
+    });
+    revalidatePath(`/workspaces/${workspaceId}`);
+  } catch (error) {
+    destination += `?error=${encodeURIComponent(messageFor(error))}`;
+  }
+  redirect(destination);
+}
+
+export async function decideResearchApprovalAction(formData: FormData): Promise<void> {
+  const workspaceId = String(formData.get("workspaceId") ?? "");
+  const runId = String(formData.get("runId") ?? "");
+  const approvalId = String(formData.get("approvalId") ?? "");
+  let destination = `/workspaces/${workspaceId}`;
+  try {
+    await apiRequest<ResearchRun>(
+      `/v1/workspaces/${workspaceId}/research-runs/${runId}/approvals/${approvalId}`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          version: Number(formData.get("version")),
+          approved: String(formData.get("approved")) === "true",
+        }),
+      },
+    );
     revalidatePath(`/workspaces/${workspaceId}`);
   } catch (error) {
     destination += `?error=${encodeURIComponent(messageFor(error))}`;

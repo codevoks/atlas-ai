@@ -40,12 +40,21 @@ from atlas_api.application.ports import (
     EvaluationRunRecord,
     IngestionJobRecord,
     MemberRecord,
+    ResearchBudget,
+    ResearchRunRecord,
     SearchCandidate,
     SearchFilter,
     SourceRecord,
     TransactionFactory,
     UploadIntentRecord,
     WorkspaceRecord,
+)
+from atlas_api.application.research import (
+    RESEARCH_CONFIG_VERSION,
+    RESEARCH_GRAPH_VERSION,
+    RESEARCH_PROMPT_VERSION,
+    DeterministicResearchGraph,
+    default_research_budget,
 )
 from atlas_api.application.retrieval_planning import (
     BASELINE_RETRIEVAL_CONFIG,
@@ -67,6 +76,7 @@ from atlas_api.domain.models import (
     EvaluationResultStatus,
     EvaluationRunStatus,
     Permission,
+    ResearchRunStatus,
     Role,
 )
 from atlas_api.domain.policy import can_manage_role, require_permission
@@ -1293,3 +1303,274 @@ class EvaluationService:
         ]
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+class ResearchService:
+    def __init__(self, transaction_factory: TransactionFactory, settings: Settings) -> None:
+        self._transactions = transaction_factory
+        self._settings = settings
+        self._search = SemanticSearchService(transaction_factory, settings)
+        self._graph = DeterministicResearchGraph()
+
+    async def create_research_run(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        purpose: str,
+        question: str,
+        idempotency_key: str,
+    ) -> tuple[ResearchRunRecord, bool]:
+        clean_purpose = " ".join(purpose.split())[:160]
+        clean_question = " ".join(question.split())
+        if len(idempotency_key) < 8 or len(idempotency_key) > 128:
+            raise ValidationError("Idempotency-Key must contain between 8 and 128 characters.")
+        if len(clean_purpose) < 2:
+            raise ValidationError("Research purpose must contain at least two visible characters.")
+        if not clean_question:
+            raise ValidationError("Research question must not be empty.")
+        if len(clean_question) > self._settings.embedding_max_text_chars:
+            raise ValidationError("Research question exceeds the configured length limit.")
+        self._graph.validate_question(clean_question)
+        budget = default_research_budget()
+        budget_body = self._budget_dict(budget)
+        request_hash = hashlib.sha256(
+            json.dumps(
+                {
+                    "purpose": clean_purpose,
+                    "question": clean_question,
+                    "budget": budget_body,
+                    "config_version": RESEARCH_CONFIG_VERSION,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.RESEARCH_RUN_MANAGE)
+            run, replayed = await tx.research.create_research_run(
+                actor=actor,
+                workspace_id=workspace_id,
+                purpose=clean_purpose,
+                question=clean_question,
+                graph_version=RESEARCH_GRAPH_VERSION,
+                config_version=RESEARCH_CONFIG_VERSION,
+                model_versions={
+                    "planner": "deterministic-local@2026-08-28",
+                    "tools": "deterministic-local@2026-08-28",
+                    "synthesis": RESEARCH_PROMPT_VERSION,
+                },
+                input_hash=hashlib.sha256(clean_question.encode("utf-8")).hexdigest(),
+                budget=budget_body,
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+            )
+        if replayed or run.status is not ResearchRunStatus.PENDING:
+            return run, replayed
+        return (
+            await self.resume_research_run(actor=actor, workspace_id=workspace_id, run_id=run.id),
+            False,
+        )
+
+    async def list_research_runs(
+        self, *, actor: Actor, workspace_id: uuid.UUID, limit: int
+    ) -> list[ResearchRunRecord]:
+        if not 1 <= limit <= 25:
+            raise ValidationError("Research run limit must be between 1 and 25.")
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.RESEARCH_RUN_READ)
+            return await tx.research.list_research_runs(workspace_id, limit=limit)
+
+    async def get_research_run(
+        self, *, actor: Actor, workspace_id: uuid.UUID, run_id: uuid.UUID
+    ) -> ResearchRunRecord:
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.RESEARCH_RUN_READ)
+            run = await tx.research.get_research_run(workspace_id, run_id)
+            if run is None:
+                raise ResourceNotFoundError()
+            return run
+
+    async def resume_research_run(
+        self, *, actor: Actor, workspace_id: uuid.UUID, run_id: uuid.UUID
+    ) -> ResearchRunRecord:
+        run = await self.get_research_run(actor=actor, workspace_id=workspace_id, run_id=run_id)
+        if run.status in {
+            ResearchRunStatus.SUCCEEDED,
+            ResearchRunStatus.FAILED,
+            ResearchRunStatus.CANCELLED,
+            ResearchRunStatus.BUDGET_EXHAUSTED,
+            ResearchRunStatus.TIMED_OUT,
+        }:
+            return run
+        if run.status is ResearchRunStatus.WAITING_APPROVAL:
+            return run
+
+        budget = self._budget_from_record(run.budget)
+
+        async def retrieve(query: str) -> list[SearchCandidate]:
+            candidates, _debug = await self._search.search(
+                actor=actor,
+                workspace_id=workspace_id,
+                query=query,
+                top_k=3,
+                filters=SearchFilter(),
+                mode="hybrid",
+                retrieval_config_version="phase8-multi-query-expansion-v1",
+            )
+            return candidates
+
+        graph_output = await self._graph.run_until_approval(
+            question=run.question,
+            budget=budget,
+            retrieval=retrieve,
+        )
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.RESEARCH_RUN_MANAGE)
+            updated = await tx.research.append_research_progress(
+                workspace_id=workspace_id,
+                research_run_id=run.id,
+                expected_version=run.version,
+                status=ResearchRunStatus.RUNNING,
+                usage=graph_output.usage,
+                report_text=None,
+                evidence=graph_output.evidence,
+                warnings=graph_output.warnings,
+                terminal_reason=None,
+                steps=graph_output.steps,
+                tool_invocations=graph_output.tool_invocations,
+                checkpoint=graph_output.state,
+            )
+            return await tx.research.request_approval(
+                actor=actor,
+                workspace_id=workspace_id,
+                research_run_id=updated.id,
+                expected_run_version=updated.version,
+                approval_type="synthesize_cited_report",
+                reason=str(graph_output.approval_payload["reason"]),
+                approval_payload=graph_output.approval_payload,
+            )
+
+    async def cancel_research_run(
+        self, *, actor: Actor, workspace_id: uuid.UUID, run_id: uuid.UUID, expected_version: int
+    ) -> ResearchRunRecord:
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.RESEARCH_RUN_MANAGE)
+            return await tx.research.cancel_research_run(
+                workspace_id=workspace_id,
+                research_run_id=run_id,
+                expected_version=expected_version,
+            )
+
+    async def decide_approval(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        run_id: uuid.UUID,
+        approval_id: uuid.UUID,
+        expected_version: int,
+        approved: bool,
+    ) -> ResearchRunRecord:
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.RESEARCH_RUN_MANAGE)
+            decided = await tx.research.decide_approval(
+                actor=actor,
+                workspace_id=workspace_id,
+                research_run_id=run_id,
+                approval_id=approval_id,
+                expected_version=expected_version,
+                approved=approved,
+            )
+        if not approved:
+            return decided
+        latest_checkpoint = decided.checkpoints[-1] if decided.checkpoints else None
+        if latest_checkpoint is None:
+            raise ValidationError("Research run has no resumable checkpoint.")
+        output = self._graph.synthesize_after_approval(
+            question=decided.question,
+            checkpoint_state=latest_checkpoint.state,
+            existing_usage=decided.usage,
+            budget=self._budget_from_record(decided.budget),
+        )
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.RESEARCH_RUN_MANAGE)
+            return await tx.research.append_research_progress(
+                workspace_id=workspace_id,
+                research_run_id=decided.id,
+                expected_version=decided.version,
+                status=ResearchRunStatus.SUCCEEDED,
+                usage=output.usage,
+                report_text=output.report_text,
+                evidence=decided.evidence,
+                warnings=sorted(set([*decided.warnings, *output.warnings])),
+                terminal_reason="completed_after_human_approval",
+                steps=output.steps,
+                tool_invocations=[],
+                checkpoint={
+                    **latest_checkpoint.state,
+                    "next_node": None,
+                    "report_hash": hashlib.sha256(output.report_text.encode("utf-8")).hexdigest(),
+                },
+            )
+
+    @staticmethod
+    def _budget_dict(budget: ResearchBudget) -> dict[str, object]:
+        return {
+            "max_steps": budget.max_steps,
+            "max_tool_calls": budget.max_tool_calls,
+            "max_input_tokens": budget.max_input_tokens,
+            "max_output_tokens": budget.max_output_tokens,
+            "max_cost_usd": budget.max_cost_usd,
+            "max_wall_time_ms": budget.max_wall_time_ms,
+        }
+
+    @staticmethod
+    def _budget_from_record(record: dict[str, object]) -> ResearchBudget:
+        return ResearchBudget(
+            max_steps=_int_json(record, "max_steps"),
+            max_tool_calls=_int_json(record, "max_tool_calls"),
+            max_input_tokens=_int_json(record, "max_input_tokens"),
+            max_output_tokens=_int_json(record, "max_output_tokens"),
+            max_cost_usd=_float_json(record, "max_cost_usd"),
+            max_wall_time_ms=_int_json(record, "max_wall_time_ms"),
+        )
+
+
+def _int_json(record: dict[str, object], key: str) -> int:
+    value = record[key]
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    raise ValidationError(f"Invalid integer value for {key}.")
+
+
+def _float_json(record: dict[str, object], key: str) -> float:
+    value = record[key]
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        return float(value)
+    raise ValidationError(f"Invalid numeric value for {key}.")
