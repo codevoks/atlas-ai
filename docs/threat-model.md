@@ -253,3 +253,29 @@ Residual risks and deferrals:
 - External web/search/connectors, egress controls, redirect handling, robots/policy rules, and billable provider approvals remain deferred.
 - Multi-agent research is not implemented. It requires benchmark evidence showing material quality or latency improvement over this bounded workflow plus a coordination/failure/evaluation design.
 - Production retention and export policy for research questions, reports, tool summaries, and checkpoints remains deployment-specific hardening work.
+
+## Phase 10 implementation security review
+
+Phase 10 consolidates the security controls from Phases 1–9 and adds executable deterministic guardrails plus auditable security-event state.
+
+Security controls implemented:
+
+- Security posture and recent security events are exposed through workspace-scoped admin-only APIs. Members and viewers cannot inspect security telemetry.
+- `security_events` persist redacted guardrail and quota outcomes with tenant scope, actor reference, request id, control version, severity, outcome, target reference, and safe metadata.
+- Input guardrails scan high-risk upload metadata/content samples, search queries, answer queries, and research purpose/question text for indirect prompt injection, secret-like values, SSRF-like content, and explicit secret-exfiltration instructions.
+- Output guardrails scan generated answers and research reports before persistence/return so secret-like model output fails closed instead of being stored as a valid answer/report.
+- The redactor replaces API-key-like values, labeled secrets, passwords, and email addresses in guardrail evidence before API errors or security events expose details.
+- Fixed-window quota counters are persisted by workspace, actor, operation, and window before expensive search, answer, or research work. Search, answer, and research have separate configured local limits.
+- Quota exhaustion returns a stable resource-exhausted error with safe retry metadata and records a separate blocked security event even though the user request fails.
+- Search now verifies workspace membership and document-read permission before deterministic query embedding or retrieval execution.
+- The egress policy primitive fails closed for non-HTTPS schemes, localhost, loopback, private, link-local, reserved, multicast, and metadata-service targets. The default product still exposes no arbitrary external tool URL.
+- Versioned policy config, content-trust/quarantine, quota, security-event, and retention-tombstone tables establish the state model required for future connector/security rollouts without creating a sensitive-content lake.
+- Phase 10 adversarial tests cover prompt-injection/secret blocking, redaction canaries, admin-only security event visibility, quota exhaustion, SSRF-safe egress policy, and zero-cost posture.
+
+Residual risks and deferrals:
+
+- Pattern-based deterministic scanners are necessary but incomplete. They provide fail-closed guardrails for known classes; they do not replace broader classifier/model-assisted review or human red-team work.
+- The default suite does not perform malware scanning, sandboxed PDF/office/OCR conversion, external penetration testing, compliance certification, enterprise DLP/KMS/HSM, SAML/SCIM, or 24/7 incident operations.
+- `content_trust_records` and `retention_tombstones` are data-model foundations in Phase 10; full deletion/export orchestration and quarantine workflow UI remain production hardening work.
+- Redis/distributed rate limiting remains deferred. PostgreSQL fixed-window counters are authoritative and sufficient for the current local product gate, but high-scale deployment should evaluate Redis or dedicated rate-limit infrastructure.
+- Security event retention, SOC escalation, alert routing, and key-rotation drills require organizational policy and deployment targets before they can be claimed complete.

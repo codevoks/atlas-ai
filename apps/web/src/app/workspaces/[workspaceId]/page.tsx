@@ -27,11 +27,15 @@ import {
   getMe,
   getMembers,
   getResearchRuns,
+  getSecurityEvents,
+  getSecurityPosture,
   getSources,
   getWorkspace,
   searchEvidence,
   type RetrievalConfigVersion,
   type ResearchRun,
+  type SecurityEvent,
+  type SecurityPosture,
   type SearchMode,
 } from "@/lib/api";
 
@@ -59,6 +63,8 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
   let documents;
   let evaluationRuns;
   let researchRuns;
+  let securityPosture: SecurityPosture | null = null;
+  let securityEvents: SecurityEvent[] = [];
   try {
     [me, workspace, members, sources, documents, evaluationRuns, researchRuns] = await Promise.all([
       getMe(),
@@ -69,6 +75,12 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
       getEvaluationRuns(workspaceId),
       getResearchRuns(workspaceId),
     ]);
+    if (workspace.role === "owner" || workspace.role === "admin") {
+      [securityPosture, securityEvents] = await Promise.all([
+        getSecurityPosture(workspaceId),
+        getSecurityEvents(workspaceId),
+      ]);
+    }
   } catch (requestError) {
     if (requestError instanceof AtlasApiError && requestError.status === 401) redirect("/sign-in");
     if (requestError instanceof AtlasApiError && requestError.status === 404) notFound();
@@ -151,6 +163,49 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
           ) : null}
         </div>
         {error ? <p className="alert" role="alert">{error}</p> : null}
+
+        {securityPosture ? (
+          <section className="search-panel">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Security assurance</p>
+                <h2>Guardrail posture</h2>
+              </div>
+              <span className="count">{securityEvents.length}</span>
+            </div>
+            <div className="result-card">
+              <div className="result-card-header">
+                <strong>{securityPosture.guardrail_version}</strong>
+                <span>{securityPosture.zero_cost ? "$0.00 local path" : "external cost enabled"}</span>
+              </div>
+              <div className="metric-grid">
+                <div><span>Paid services</span><strong>{securityPosture.paid_services_enabled ? "enabled" : "disabled"}</strong></div>
+                <div><span>Policy</span><strong>{securityPosture.policy_config_version}</strong></div>
+                <div><span>Fail-closed</span><strong>{securityPosture.fail_closed_controls.length}</strong></div>
+                <div><span>Deterministic</span><strong>{securityPosture.deterministic_controls.length}</strong></div>
+              </div>
+              <p className="muted">
+                Controls: {securityPosture.deterministic_controls.slice(0, 6).join(", ")}
+              </p>
+            </div>
+            <div className="results-list">
+              {securityEvents.length ? (
+                securityEvents.map((event) => (
+                  <article className="result-card compact" key={event.id}>
+                    <div className="result-card-header">
+                      <strong>{event.event_type}</strong>
+                      <span>{event.outcome} · {event.severity}</span>
+                    </div>
+                    <p className="muted mono">{event.control_version} · request {event.request_id}</p>
+                    <p className="muted">{formatFindings(event.safe_metadata)}</p>
+                  </article>
+                ))
+              ) : (
+                <p className="muted">No security events recorded yet.</p>
+              )}
+            </div>
+          </section>
+        ) : null}
 
         <section className="search-panel">
           <div className="section-heading">
@@ -737,4 +792,18 @@ function matchedVariants(provenance: Record<string, unknown>): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : [];
+}
+
+function formatFindings(metadata: Record<string, unknown>): string {
+  const findings = metadata.findings;
+  if (!Array.isArray(findings) || findings.length === 0) return "No finding details.";
+  return findings
+    .slice(0, 3)
+    .map((finding) => {
+      if (!finding || typeof finding !== "object" || Array.isArray(finding)) return null;
+      const item = finding as Record<string, unknown>;
+      return `${String(item.code ?? "finding")} (${String(item.action ?? "detected")})`;
+    })
+    .filter((item): item is string => Boolean(item))
+    .join(", ");
 }

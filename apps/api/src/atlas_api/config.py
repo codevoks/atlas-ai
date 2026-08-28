@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     answer_max_context_items: int = 5
     answer_max_context_chars: int = 2_400
     answer_max_output_chars: int = 1_200
+    security_rate_window_seconds: int = 60
+    security_search_requests_per_window: int = 60
+    security_answer_requests_per_window: int = 30
+    security_research_requests_per_window: int = 10
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -107,6 +111,14 @@ class Settings(BaseSettings):
             raise ValueError("ANSWER_MAX_CONTEXT_CHARS must be at least 200")
         if self.answer_max_output_chars < 200:
             raise ValueError("ANSWER_MAX_OUTPUT_CHARS must be at least 200")
+        if self.security_rate_window_seconds < 1:
+            raise ValueError("SECURITY_RATE_WINDOW_SECONDS must be positive")
+        if self.security_search_requests_per_window < 1:
+            raise ValueError("SECURITY_SEARCH_REQUESTS_PER_WINDOW must be positive")
+        if self.security_answer_requests_per_window < 1:
+            raise ValueError("SECURITY_ANSWER_REQUESTS_PER_WINDOW must be positive")
+        if self.security_research_requests_per_window < 1:
+            raise ValueError("SECURITY_RESEARCH_REQUESTS_PER_WINDOW must be positive")
         return self
 
 

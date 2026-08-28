@@ -10,6 +10,7 @@ from atlas_api.application.services import (
     DocumentService,
     EvaluationService,
     ResearchService,
+    SecurityService,
     SemanticSearchService,
     WorkspaceService,
 )
@@ -54,6 +55,10 @@ def get_research_service(request: Request) -> ResearchService:
     return cast(ResearchService, request.app.state.research_service)
 
 
+def get_security_service(request: Request) -> SecurityService:
+    return cast(SecurityService, request.app.state.security_service)
+
+
 ActorDependency = Annotated[Actor, Depends(get_current_actor)]
 WorkspaceServiceDependency = Annotated[WorkspaceService, Depends(get_workspace_service)]
 DocumentServiceDependency = Annotated[DocumentService, Depends(get_document_service)]
@@ -63,3 +68,4 @@ SemanticSearchServiceDependency = Annotated[
 AnswerServiceDependency = Annotated[AnswerService, Depends(get_answer_service)]
 EvaluationServiceDependency = Annotated[EvaluationService, Depends(get_evaluation_service)]
 ResearchServiceDependency = Annotated[ResearchService, Depends(get_research_service)]
+SecurityServiceDependency = Annotated[SecurityService, Depends(get_security_service)]

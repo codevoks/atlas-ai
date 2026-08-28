@@ -26,6 +26,12 @@ Workspace --< ResearchRun --< ResearchStep --< ToolInvocation
 ResearchRun --< Checkpoint
 ResearchRun --< Approval
 
+Workspace --< SecurityEvent
+Workspace --< QuotaCounter
+Workspace --< ContentTrustRecord
+Workspace --< SecurityPolicyConfig
+Workspace --< RetentionTombstone
+
 Workspace --< AuditEvent
 ```
 
@@ -45,7 +51,7 @@ Workspace --< AuditEvent
 - At most one version per document is active/published. A version can be published only after all configured mandatory stages succeed.
 - Deletion prevents new reads immediately from the source of truth and propagates tombstones to derived indexes/caches asynchronously.
 
-Phase 8 implemented tables and indexes:
+Phase 10 implemented tables and indexes:
 
 - `sources`: workspace-scoped upload source registry with active/disabled state.
 - `upload_intents`: tenant-prefixed object key, creator, declared filename, media type, byte size, digest, expiry, lifecycle status, and finalized document-version reference.
@@ -71,6 +77,11 @@ Phase 8 implemented tables and indexes:
 - `tool_invocations`: allowlisted tool-call records linked to research steps with stable idempotency keys, sanitized input/output summaries, status, latency, and error metadata.
 - `checkpoints`: schema-versioned workflow checkpoints containing resumable state summaries such as planned questions, evidence identities, approval payload, and next node.
 - `approvals`: optimistic-versioned human approval decisions for sensitive workflow boundaries, including approval type, reason, payload, status, requester/approver, and decision timestamp.
+- `security_policy_configs`: versioned workspace policy metadata and active policy selection.
+- `security_events`: redacted guardrail, quota, policy, and incident-relevant event references.
+- `quota_counters`: tenant/user/operation fixed-window counters for abuse and denial-of-wallet controls.
+- `content_trust_records`: trust/quarantine status and classifier signals for tenant-owned content.
+- `retention_tombstones`: deletion/retention propagation references for resources that must not reappear in future projections, indexes, caches, or checkpoints.
 
 ### Jobs
 
@@ -135,6 +146,18 @@ WAITING_APPROVAL -> CANCELLED when approval is denied
 ```
 
 The default graph is deterministic and local. It plans bounded subquestions, invokes only `atlas_retrieval` and `local_policy_catalog`, records tool idempotency keys, stores a checkpoint before synthesis, and requires a current approval version before final report generation.
+
+### Security guardrails
+
+Phase 10 adds a deterministic guardrail and assurance model:
+
+- `security_events` store minimal redacted metadata for blocked/detected guardrail outcomes, quota abuse, and policy-relevant incidents. They are tenant-scoped and admin-readable only.
+- `quota_counters` are keyed by `(workspace_id, actor_user_id, operation, window_start)` and increment atomically before expensive search, answer, or research work.
+- `security_policy_configs` version policy metadata so later rollouts can be explicit and auditable rather than hidden code changes.
+- `content_trust_records` provide the canonical place to mark document versions, chunks, or future connector payloads as trusted, untrusted, or quarantined.
+- `retention_tombstones` provide deletion/retention propagation evidence for future indexes, caches, checkpoints, and external projections.
+
+Security-critical ambiguity fails closed. Security event metadata must never store raw secrets, raw prompts, raw document bodies, or provider payloads.
 
 ## Indexes and access paths
 

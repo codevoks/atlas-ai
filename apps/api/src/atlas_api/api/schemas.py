@@ -26,6 +26,8 @@ from atlas_api.application.ports import (
     ResearchRunRecord,
     ResearchStepRecord,
     SearchCandidate,
+    SecurityEventRecord,
+    SecurityPostureRecord,
     SourceRecord,
     ToolInvocationRecord,
     UploadIntentRecord,
@@ -41,6 +43,8 @@ from atlas_api.domain.models import (
     ResearchRunStatus,
     ResearchStepStatus,
     Role,
+    SecurityEventOutcome,
+    SecurityEventSeverity,
     SourceStatus,
     SourceType,
     ToolInvocationStatus,
@@ -160,6 +164,64 @@ class SourceResponse(BaseModel):
 
 class SourceListResponse(BaseModel):
     items: list[SourceResponse]
+
+
+class SecurityEventResponse(BaseModel):
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    actor_user_id: uuid.UUID | None
+    event_type: str
+    severity: SecurityEventSeverity
+    outcome: SecurityEventOutcome
+    request_id: str
+    target_type: str | None
+    target_id: uuid.UUID | None
+    control_version: str
+    safe_metadata: dict[str, Any]
+    created_at: str
+
+    @classmethod
+    def from_record(cls, record: SecurityEventRecord) -> SecurityEventResponse:
+        return cls(
+            id=record.id,
+            workspace_id=record.workspace_id,
+            actor_user_id=record.actor_user_id,
+            event_type=record.event_type,
+            severity=record.severity,
+            outcome=record.outcome,
+            request_id=record.request_id,
+            target_type=record.target_type,
+            target_id=record.target_id,
+            control_version=record.control_version,
+            safe_metadata=record.safe_metadata,
+            created_at=record.created_at.isoformat(),
+        )
+
+
+class SecurityEventListResponse(BaseModel):
+    items: list[SecurityEventResponse]
+
+
+class SecurityPostureResponse(BaseModel):
+    policy_config_version: str
+    guardrail_version: str
+    zero_cost: bool
+    paid_services_enabled: bool
+    fail_closed_controls: list[str]
+    deterministic_controls: list[str]
+    residual_risks: list[dict[str, Any]]
+
+    @classmethod
+    def from_record(cls, record: SecurityPostureRecord) -> SecurityPostureResponse:
+        return cls(
+            policy_config_version=record.policy_config_version,
+            guardrail_version=record.guardrail_version,
+            zero_cost=record.zero_cost,
+            paid_services_enabled=record.paid_services_enabled,
+            fail_closed_controls=record.fail_closed_controls,
+            deterministic_controls=record.deterministic_controls,
+            residual_risks=record.residual_risks,
+        )
 
 
 class UploadIntentCreate(BaseModel):

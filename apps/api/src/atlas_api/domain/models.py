@@ -34,6 +34,8 @@ class Permission(StrEnum):
     INGESTION_JOB_MANAGE = "ingestion_job:manage"
     RESEARCH_RUN_READ = "research_run:read"
     RESEARCH_RUN_MANAGE = "research_run:manage"
+    SECURITY_READ = "security:read"
+    SECURITY_MANAGE = "security:manage"
 
 
 class SourceType(StrEnum):
@@ -165,6 +167,26 @@ class ApprovalStatus(StrEnum):
     APPROVED = "approved"
     DENIED = "denied"
     STALE = "stale"
+
+
+class SecurityEventSeverity(StrEnum):
+    INFO = "info"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class SecurityEventOutcome(StrEnum):
+    ALLOWED = "allowed"
+    BLOCKED = "blocked"
+    DETECTED = "detected"
+
+
+class ContentTrustStatus(StrEnum):
+    TRUSTED = "trusted"
+    UNTRUSTED = "untrusted"
+    QUARANTINED = "quarantined"
 
 
 @dataclass(frozen=True, slots=True)

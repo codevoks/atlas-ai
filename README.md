@@ -1,10 +1,10 @@
 # Atlas AI
 
-Atlas AI is a production-grade enterprise knowledge and RAG SaaS built through explicit engineering phases. The repository currently contains the Phase 9 foundation: monorepo tooling, web/API/worker service boundaries, authentication seams, workspace tenancy, RBAC, idempotent workspace creation, audit events, source/document metadata, signed local upload intents, durable ingestion jobs, deterministic parsing and chunking for supported text formats, deterministic local embeddings, PostgreSQL lexical retrieval, tenant-safe semantic and hybrid evidence retrieval, deterministic grounded answers with verified citations, versioned evaluation datasets, deterministic offline RAG evaluation runs, evidence-gated query expansion, bounded multi-query retrieval planning, bounded research runs with checkpoints, tool provenance, budget enforcement, human approval, cited reports, normalized derived artifacts, parser/chunker/embedding/retrieval/generation/evaluation/research provenance, and generated OpenAPI-to-TypeScript contracts.
+Atlas AI is a production-grade enterprise knowledge and RAG SaaS built through explicit engineering phases. The repository currently contains the Phase 10 foundation: monorepo tooling, web/API/worker service boundaries, authentication seams, workspace tenancy, RBAC, idempotent workspace creation, audit events, source/document metadata, signed local upload intents, durable ingestion jobs, deterministic parsing and chunking for supported text formats, deterministic local embeddings, PostgreSQL lexical retrieval, tenant-safe semantic and hybrid evidence retrieval, deterministic grounded answers with verified citations, versioned evaluation datasets, deterministic offline RAG evaluation runs, evidence-gated query expansion, bounded multi-query retrieval planning, bounded research runs with checkpoints, tool provenance, budget enforcement, human approval, cited reports, centralized security guardrails, security-event visibility, quota counters, content-trust/retention data-model foundations, normalized derived artifacts, parser/chunker/embedding/retrieval/generation/evaluation/research/security provenance, and generated OpenAPI-to-TypeScript contracts.
 
 ## Current phase
 
-Phase 9 — bounded agentic research workflow.
+Phase 10 — AI security, guardrails, and adversarial assurance.
 
 Implemented:
 
@@ -40,16 +40,21 @@ Implemented:
 - deterministic local research graph with planner, Atlas retrieval tool, local policy-catalog tool, approval gate, and synthesis node
 - research APIs for idempotent create, list, get, resume, cancel, and approval decisions
 - workspace UI for starting research, inspecting run progress/tool provenance/checkpoints, approving synthesis, denying runs, and reading final reports
+- deterministic input/output guardrails for indirect prompt injection, secret-like content, SSRF-like content, and unsafe generated output
+- security-event persistence and admin-only security posture/event APIs
+- fixed-window quota counters for abuse and denial-of-wallet protection on search, answer, and research operations
+- egress policy, redactor, deterministic adversarial guardrail primitives, and security posture UI
+- PostgreSQL foundations for versioned security policy configs, content trust records, quota counters, security events, and retention tombstones
 - version, chunk, and evidence API responses with safe parser/chunker/embedding provenance and counts
 - OpenAPI contract export and generated TypeScript types
 
 Deferred:
 
-- optional production S3-compatible storage, malware scanning, broad office/PDF/OCR parsing, pgvector ANN indexing, learned fusion, hosted reranking/generation, advanced citation analysis, hosted/LLM-judge evaluation, contextual chunk projections, external research tools, multi-agent runtime, production cloud, billing, SAML/SCIM, and fine-grained document ACLs
+- optional production S3-compatible storage, malware scanning, broad office/PDF/OCR parsing, pgvector ANN indexing, learned fusion, hosted reranking/generation, advanced citation analysis, hosted/LLM-judge evaluation, contextual chunk projections, external research tools, multi-agent runtime, enterprise DLP/KMS/HSM, external penetration testing, compliance certification, production cloud, billing, SAML/SCIM, and fine-grained document ACLs
 
 ## Zero-cost local path
 
-Atlas must remain buildable, testable, and demonstrable without paid SaaS, cloud resources, domains, or paid model APIs. The current Phase 9 path uses local Docker/PostgreSQL, deterministic development auth, a filesystem-backed object-store adapter, local API/web/worker services, deterministic parser/chunker/embedding behavior, PostgreSQL full-text search, exact semantic search over stored normalized vectors, RRF hybrid fusion, deterministic query expansion, bounded multi-query planning, deterministic local generation, verified citation validation, deterministic local evaluation metrics, deterministic local research tools, approval-gated report synthesis, and no hosted model-provider calls.
+Atlas must remain buildable, testable, and demonstrable without paid SaaS, cloud resources, domains, or paid model APIs. The current Phase 10 path uses local Docker/PostgreSQL, deterministic development auth, a filesystem-backed object-store adapter, local API/web/worker services, deterministic parser/chunker/embedding behavior, PostgreSQL full-text search, exact semantic search over stored normalized vectors, RRF hybrid fusion, deterministic query expansion, bounded multi-query planning, deterministic local generation, verified citation validation, deterministic local evaluation metrics, deterministic local research tools, approval-gated report synthesis, deterministic security guardrails, local quota counters, redacted security events, and no hosted model-provider calls.
 
 Future cloud, managed observability, hosted search, and model-provider integrations are optional production adapters. They must be explicitly enabled and must not run or provision billable resources as part of the default setup, tests, or demo.
 

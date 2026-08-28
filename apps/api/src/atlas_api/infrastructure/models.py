@@ -889,3 +889,162 @@ class ResearchApprovalModel(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SecurityPolicyConfigModel(Base):
+    __tablename__ = "security_policy_configs"
+    __table_args__ = (
+        CheckConstraint("version >= 1", name="valid_security_policy_config_version"),
+        UniqueConstraint(
+            "workspace_id",
+            "policy_name",
+            "version",
+            name="uq_security_policy_configs_workspace_policy_version",
+        ),
+        Index(
+            "ix_security_policy_configs_workspace_active",
+            "workspace_id",
+            "policy_name",
+            "active",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    policy_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    config_version: Mapped[str] = mapped_column(String(120), nullable=False)
+    config: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class SecurityEventModel(Base):
+    __tablename__ = "security_events"
+    __table_args__ = (
+        CheckConstraint(
+            "severity IN ('info','low','medium','high','critical')",
+            name="valid_security_event_severity",
+        ),
+        CheckConstraint(
+            "outcome IN ('allowed','blocked','detected')",
+            name="valid_security_event_outcome",
+        ),
+        Index("ix_security_events_workspace_created", "workspace_id", "created_at"),
+        Index("ix_security_events_workspace_type", "workspace_id", "event_type"),
+        Index("ix_security_events_workspace_outcome", "workspace_id", "outcome"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    event_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(20), nullable=False)
+    request_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    target_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    control_version: Mapped[str] = mapped_column(String(120), nullable=False)
+    safe_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class QuotaCounterModel(TimestampMixin, Base):
+    __tablename__ = "quota_counters"
+    __table_args__ = (
+        CheckConstraint("count >= 0", name="valid_quota_count"),
+        CheckConstraint("quota_limit >= 1", name="valid_quota_limit"),
+        CheckConstraint("window_seconds >= 1", name="valid_quota_window_seconds"),
+        UniqueConstraint(
+            "workspace_id",
+            "actor_user_id",
+            "operation",
+            "window_start",
+            name="uq_quota_counters_scope_window",
+        ),
+        Index("ix_quota_counters_workspace_operation", "workspace_id", "operation"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    actor_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    operation: Mapped[str] = mapped_column(String(120), nullable=False)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    window_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    quota_limit: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class ContentTrustRecordModel(TimestampMixin, Base):
+    __tablename__ = "content_trust_records"
+    __table_args__ = (
+        CheckConstraint(
+            "trust_status IN ('trusted','untrusted','quarantined')",
+            name="valid_content_trust_status",
+        ),
+        UniqueConstraint(
+            "workspace_id",
+            "resource_type",
+            "resource_id",
+            name="uq_content_trust_resource",
+        ),
+        Index("ix_content_trust_workspace_status", "workspace_id", "trust_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    resource_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    resource_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    trust_status: Mapped[str] = mapped_column(String(30), nullable=False)
+    classifier_version: Mapped[str] = mapped_column(String(120), nullable=False)
+    signals: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    reason: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
+class RetentionTombstoneModel(Base):
+    __tablename__ = "retention_tombstones"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "resource_type",
+            "resource_id",
+            name="uq_retention_tombstones_resource",
+        ),
+        Index("ix_retention_tombstones_workspace_created", "workspace_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    resource_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    resource_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    deleted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reason: Mapped[str] = mapped_column(String(160), nullable=False)
+    request_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    safe_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

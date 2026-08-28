@@ -39,6 +39,7 @@ from atlas_api.application.ports import (
     IngestionJobRecord,
     MemberRecord,
     MissingEmbeddingChunkRecord,
+    QuotaDecisionRecord,
     ResearchApprovalRecord,
     ResearchRunRecord,
     ResearchStepDraft,
@@ -46,6 +47,8 @@ from atlas_api.application.ports import (
     ResearchStore,
     SearchCandidate,
     SearchFilter,
+    SecurityEventRecord,
+    SecurityStore,
     SourceRecord,
     ToolInvocationDraft,
     ToolInvocationRecord,
@@ -76,6 +79,8 @@ from atlas_api.domain.models import (
     ResearchStepStatus,
     RetryClass,
     Role,
+    SecurityEventOutcome,
+    SecurityEventSeverity,
     SourceStatus,
     SourceType,
     ToolInvocationStatus,
@@ -101,10 +106,12 @@ from atlas_api.infrastructure.models import (
     IngestionJobModel,
     JobEventModel,
     MembershipModel,
+    QuotaCounterModel,
     ResearchApprovalModel,
     ResearchCheckpointModel,
     ResearchRunModel,
     ResearchStepModel,
+    SecurityEventModel,
     SourceModel,
     ToolInvocationModel,
     UploadIntentModel,
@@ -2830,6 +2837,122 @@ class SqlAlchemyResearchStore:
         )
 
 
+class SqlAlchemySecurityStore:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def record_security_event(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        actor_user_id: uuid.UUID | None,
+        event_type: str,
+        severity: SecurityEventSeverity,
+        outcome: SecurityEventOutcome,
+        request_id: str,
+        target_type: str | None,
+        target_id: uuid.UUID | None,
+        control_version: str,
+        safe_metadata: dict[str, object],
+    ) -> SecurityEventRecord:
+        event = SecurityEventModel(
+            workspace_id=workspace_id,
+            actor_user_id=actor_user_id,
+            event_type=event_type,
+            severity=severity.value,
+            outcome=outcome.value,
+            request_id=request_id,
+            target_type=target_type,
+            target_id=target_id,
+            control_version=control_version,
+            safe_metadata=safe_metadata,
+        )
+        self._session.add(event)
+        await self._session.flush()
+        return self._security_event_record(event)
+
+    async def list_security_events(
+        self, workspace_id: uuid.UUID, *, limit: int
+    ) -> list[SecurityEventRecord]:
+        rows = (
+            await self._session.scalars(
+                select(SecurityEventModel)
+                .where(SecurityEventModel.workspace_id == workspace_id)
+                .order_by(SecurityEventModel.created_at.desc(), SecurityEventModel.id.desc())
+                .limit(limit)
+            )
+        ).all()
+        return [self._security_event_record(row) for row in rows]
+
+    async def increment_quota_counter(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        actor_user_id: uuid.UUID,
+        operation: str,
+        window_start: datetime,
+        window_seconds: int,
+        limit: int,
+    ) -> QuotaDecisionRecord:
+        lock_id = _advisory_lock_id(
+            f"{workspace_id}:{actor_user_id}:quota:{operation}:{window_start.isoformat()}"
+        )
+        await self._session.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": lock_id}
+        )
+        counter = await self._session.scalar(
+            select(QuotaCounterModel).where(
+                QuotaCounterModel.workspace_id == workspace_id,
+                QuotaCounterModel.actor_user_id == actor_user_id,
+                QuotaCounterModel.operation == operation,
+                QuotaCounterModel.window_start == window_start,
+            )
+        )
+        if counter is None:
+            counter = QuotaCounterModel(
+                workspace_id=workspace_id,
+                actor_user_id=actor_user_id,
+                operation=operation,
+                window_start=window_start,
+                window_seconds=window_seconds,
+                count=0,
+                quota_limit=limit,
+            )
+            self._session.add(counter)
+            await self._session.flush()
+        counter.quota_limit = limit
+        allowed = counter.count < limit
+        if allowed:
+            counter.count += 1
+        await self._session.flush()
+        remaining = max(limit - counter.count, 0)
+        return QuotaDecisionRecord(
+            allowed=allowed,
+            operation=operation,
+            limit=limit,
+            remaining=remaining,
+            window_seconds=window_seconds,
+            retry_after_seconds=window_seconds if not allowed else 0,
+        )
+
+    @staticmethod
+    def _security_event_record(event: SecurityEventModel) -> SecurityEventRecord:
+        return SecurityEventRecord(
+            id=event.id,
+            workspace_id=event.workspace_id,
+            actor_user_id=event.actor_user_id,
+            event_type=event.event_type,
+            severity=SecurityEventSeverity(event.severity),
+            outcome=SecurityEventOutcome(event.outcome),
+            request_id=event.request_id,
+            target_type=event.target_type,
+            target_id=event.target_id,
+            control_version=event.control_version,
+            safe_metadata=event.safe_metadata,
+            created_at=event.created_at,
+        )
+
+
 class SqlAlchemyTransaction:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
@@ -2837,6 +2960,7 @@ class SqlAlchemyTransaction:
         self.workspaces: WorkspaceStore
         self.documents: DocumentStore
         self.research: ResearchStore
+        self.security: SecurityStore
 
     async def __aenter__(self) -> SqlAlchemyTransaction:
         self._session = self._session_factory()
@@ -2844,6 +2968,7 @@ class SqlAlchemyTransaction:
         self.workspaces = SqlAlchemyWorkspaceStore(self._session)
         self.documents = SqlAlchemyDocumentStore(self._session)
         self.research = SqlAlchemyResearchStore(self._session)
+        self.security = SqlAlchemySecurityStore(self._session)
         return self
 
     async def __aexit__(

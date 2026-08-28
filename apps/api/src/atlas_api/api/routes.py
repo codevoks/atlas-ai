@@ -12,6 +12,7 @@ from atlas_api.api.dependencies import (
     DocumentServiceDependency,
     EvaluationServiceDependency,
     ResearchServiceDependency,
+    SecurityServiceDependency,
     SemanticSearchServiceDependency,
     WorkspaceServiceDependency,
 )
@@ -51,6 +52,9 @@ from atlas_api.api.schemas import (
     ResearchRunResponse,
     SearchRequest,
     SearchResponse,
+    SecurityEventListResponse,
+    SecurityEventResponse,
+    SecurityPostureResponse,
     SemanticSearchRequest,
     SemanticSearchResponse,
     SourceCreate,
@@ -131,6 +135,36 @@ async def get_workspace(
     service: WorkspaceServiceDependency,
 ) -> WorkspaceResponse:
     return WorkspaceResponse.from_record(await service.get_workspace(actor, workspace_id))
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/security/posture",
+    response_model=SecurityPostureResponse,
+    tags=["security"],
+)
+async def security_posture(
+    workspace_id: uuid.UUID,
+    actor: ActorDependency,
+    service: SecurityServiceDependency,
+) -> SecurityPostureResponse:
+    return SecurityPostureResponse.from_record(await service.posture(actor, workspace_id))
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/security/events",
+    response_model=SecurityEventListResponse,
+    tags=["security"],
+)
+async def list_security_events(
+    workspace_id: uuid.UUID,
+    actor: ActorDependency,
+    service: SecurityServiceDependency,
+    limit: int = 25,
+) -> SecurityEventListResponse:
+    records = await service.list_security_events(actor, workspace_id, limit=limit)
+    return SecurityEventListResponse(
+        items=[SecurityEventResponse.from_record(item) for item in records]
+    )
 
 
 @router.patch(

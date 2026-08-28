@@ -235,6 +235,31 @@ export interface ResearchRun {
   checkpoints: ResearchCheckpoint[];
 }
 
+export interface SecurityEvent {
+  id: string;
+  workspace_id: string;
+  actor_user_id: string | null;
+  event_type: string;
+  severity: "info" | "low" | "medium" | "high" | "critical";
+  outcome: "allowed" | "blocked" | "detected";
+  request_id: string;
+  target_type: string | null;
+  target_id: string | null;
+  control_version: string;
+  safe_metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface SecurityPosture {
+  policy_config_version: string;
+  guardrail_version: string;
+  zero_cost: boolean;
+  paid_services_enabled: boolean;
+  fail_closed_controls: string[];
+  deterministic_controls: string[];
+  residual_risks: Record<string, unknown>[];
+}
+
 interface ApiErrorPayload {
   error?: { code?: string; message?: string; request_id?: string };
 }
@@ -387,6 +412,17 @@ export async function getEvaluationRuns(workspaceId: string): Promise<Evaluation
 export async function getResearchRuns(workspaceId: string): Promise<ResearchRun[]> {
   const payload = await apiRequest<{ items: ResearchRun[] }>(
     `/v1/workspaces/${workspaceId}/research-runs?limit=5`,
+  );
+  return payload.items;
+}
+
+export async function getSecurityPosture(workspaceId: string): Promise<SecurityPosture> {
+  return apiRequest<SecurityPosture>(`/v1/workspaces/${workspaceId}/security/posture`);
+}
+
+export async function getSecurityEvents(workspaceId: string): Promise<SecurityEvent[]> {
+  const payload = await apiRequest<{ items: SecurityEvent[] }>(
+    `/v1/workspaces/${workspaceId}/security/events?limit=8`,
   );
   return payload.items;
 }

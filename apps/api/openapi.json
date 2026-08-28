@@ -266,6 +266,112 @@
         }
       }
     },
+    "/v1/workspaces/{workspace_id}/security/posture": {
+      "get": {
+        "tags": [
+          "security"
+        ],
+        "summary": "Security Posture",
+        "operationId": "security_posture_v1_workspaces__workspace_id__security_posture_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecurityPostureResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/security/events": {
+      "get": {
+        "tags": [
+          "security"
+        ],
+        "summary": "List Security Events",
+        "operationId": "list_security_events_v1_workspaces__workspace_id__security_events_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 25,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecurityEventListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/workspaces/{workspace_id}/members": {
       "get": {
         "tags": [
@@ -5002,6 +5108,187 @@
           "trace_id"
         ],
         "title": "SearchResponse"
+      },
+      "SecurityEventListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SecurityEventResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "SecurityEventListResponse"
+      },
+      "SecurityEventOutcome": {
+        "type": "string",
+        "enum": [
+          "allowed",
+          "blocked",
+          "detected"
+        ],
+        "title": "SecurityEventOutcome"
+      },
+      "SecurityEventResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "actor_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor User Id"
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/SecurityEventSeverity"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/SecurityEventOutcome"
+          },
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "target_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Type"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "control_version": {
+            "type": "string",
+            "title": "Control Version"
+          },
+          "safe_metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Safe Metadata"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "actor_user_id",
+          "event_type",
+          "severity",
+          "outcome",
+          "request_id",
+          "target_type",
+          "target_id",
+          "control_version",
+          "safe_metadata",
+          "created_at"
+        ],
+        "title": "SecurityEventResponse"
+      },
+      "SecurityEventSeverity": {
+        "type": "string",
+        "enum": [
+          "info",
+          "low",
+          "medium",
+          "high",
+          "critical"
+        ],
+        "title": "SecurityEventSeverity"
+      },
+      "SecurityPostureResponse": {
+        "properties": {
+          "policy_config_version": {
+            "type": "string",
+            "title": "Policy Config Version"
+          },
+          "guardrail_version": {
+            "type": "string",
+            "title": "Guardrail Version"
+          },
+          "zero_cost": {
+            "type": "boolean",
+            "title": "Zero Cost"
+          },
+          "paid_services_enabled": {
+            "type": "boolean",
+            "title": "Paid Services Enabled"
+          },
+          "fail_closed_controls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fail Closed Controls"
+          },
+          "deterministic_controls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Deterministic Controls"
+          },
+          "residual_risks": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Residual Risks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "policy_config_version",
+          "guardrail_version",
+          "zero_cost",
+          "paid_services_enabled",
+          "fail_closed_controls",
+          "deterministic_controls",
+          "residual_risks"
+        ],
+        "title": "SecurityPostureResponse"
       },
       "SemanticSearchFilters": {
         "properties": {

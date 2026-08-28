@@ -23,6 +23,8 @@ from atlas_api.domain.models import (
     ResearchRunStatus,
     ResearchStepStatus,
     Role,
+    SecurityEventOutcome,
+    SecurityEventSeverity,
     SourceStatus,
     SourceType,
     ToolInvocationStatus,
@@ -549,6 +551,43 @@ class ResearchRunRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class SecurityEventRecord:
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    actor_user_id: uuid.UUID | None
+    event_type: str
+    severity: SecurityEventSeverity
+    outcome: SecurityEventOutcome
+    request_id: str
+    target_type: str | None
+    target_id: uuid.UUID | None
+    control_version: str
+    safe_metadata: dict[str, object]
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class SecurityPostureRecord:
+    policy_config_version: str
+    guardrail_version: str
+    zero_cost: bool
+    paid_services_enabled: bool
+    fail_closed_controls: list[str]
+    deterministic_controls: list[str]
+    residual_risks: list[dict[str, object]]
+
+
+@dataclass(frozen=True, slots=True)
+class QuotaDecisionRecord:
+    allowed: bool
+    operation: str
+    limit: int
+    remaining: int
+    window_seconds: int
+    retry_after_seconds: int
+
+
+@dataclass(frozen=True, slots=True)
 class IngestionJobRecord:
     id: uuid.UUID
     workspace_id: uuid.UUID
@@ -924,10 +963,43 @@ class ResearchStore(Protocol):
     ) -> ResearchRunRecord: ...
 
 
+class SecurityStore(Protocol):
+    async def record_security_event(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        actor_user_id: uuid.UUID | None,
+        event_type: str,
+        severity: SecurityEventSeverity,
+        outcome: SecurityEventOutcome,
+        request_id: str,
+        target_type: str | None,
+        target_id: uuid.UUID | None,
+        control_version: str,
+        safe_metadata: dict[str, object],
+    ) -> SecurityEventRecord: ...
+
+    async def list_security_events(
+        self, workspace_id: uuid.UUID, *, limit: int
+    ) -> list[SecurityEventRecord]: ...
+
+    async def increment_quota_counter(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        actor_user_id: uuid.UUID,
+        operation: str,
+        window_start: datetime,
+        window_seconds: int,
+        limit: int,
+    ) -> QuotaDecisionRecord: ...
+
+
 class Transaction(Protocol):
     workspaces: WorkspaceStore
     documents: DocumentStore
     research: ResearchStore
+    security: SecurityStore
 
     async def __aenter__(self) -> Transaction: ...
 

@@ -23,6 +23,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.INGESTION_JOB_MANAGE,
             Permission.RESEARCH_RUN_READ,
             Permission.RESEARCH_RUN_MANAGE,
+            Permission.SECURITY_READ,
+            Permission.SECURITY_MANAGE,
         }
     ),
     Role.MEMBER: frozenset(

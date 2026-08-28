@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -44,6 +45,8 @@ from atlas_api.application.ports import (
     ResearchRunRecord,
     SearchCandidate,
     SearchFilter,
+    SecurityEventRecord,
+    SecurityPostureRecord,
     SourceRecord,
     TransactionFactory,
     UploadIntentRecord,
@@ -78,9 +81,22 @@ from atlas_api.domain.models import (
     Permission,
     ResearchRunStatus,
     Role,
+    SecurityEventOutcome,
+    SecurityEventSeverity,
 )
 from atlas_api.domain.policy import can_manage_role, require_permission
 from atlas_api.infrastructure.object_store import LocalObjectStore
+from atlas_api.security.guardrails import (
+    DEFAULT_POLICY_CONFIG_VERSION,
+    GUARDRAIL_VERSION,
+    GuardrailAction,
+    GuardrailDecision,
+    GuardrailFinding,
+    InputValidator,
+    OutputValidator,
+    Redactor,
+    findings_to_safe_metadata,
+)
 
 ALLOWED_UPLOAD_MEDIA_TYPES = frozenset(
     {"text/plain", "text/markdown", "application/pdf", "application/octet-stream"}
@@ -193,6 +209,255 @@ class WorkspaceService:
             await tx.workspaces.remove_member(workspace_id, user_id, actor, request_id)
 
 
+class SecurityService:
+    def __init__(self, transaction_factory: TransactionFactory, settings: Settings) -> None:
+        self._transactions = transaction_factory
+        self._settings = settings
+        self._input_validator = InputValidator()
+        self._output_validator = OutputValidator()
+        self._redactor = Redactor()
+
+    async def list_security_events(
+        self, actor: Actor, workspace_id: uuid.UUID, *, limit: int = 25
+    ) -> list[SecurityEventRecord]:
+        if not 1 <= limit <= 100:
+            raise ValidationError("Security event limit is outside the supported bounds.")
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.SECURITY_READ)
+            return await tx.security.list_security_events(workspace_id, limit=limit)
+
+    async def posture(self, actor: Actor, workspace_id: uuid.UUID) -> SecurityPostureRecord:
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.SECURITY_READ)
+        return SecurityPostureRecord(
+            policy_config_version=DEFAULT_POLICY_CONFIG_VERSION,
+            guardrail_version=GUARDRAIL_VERSION,
+            zero_cost=True,
+            paid_services_enabled=False,
+            fail_closed_controls=[
+                "authentication",
+                "authorization",
+                "tenant_scope",
+                "egress_policy",
+                "secret_output",
+                "quota_reservation",
+                "citation_validation",
+                "research_approval",
+            ],
+            deterministic_controls=[
+                "schema_validation",
+                "rbac_policy",
+                "input_scanner",
+                "output_scanner",
+                "redactor",
+                "fixed_window_quota",
+                "allowlisted_retrieval_config",
+                "allowlisted_research_tools",
+            ],
+            residual_risks=[
+                {
+                    "risk": "Pattern-based scanners can miss novel prompt-injection wording.",
+                    "severity": "medium",
+                    "mitigation": (
+                        "Keep deterministic deny rules at authority boundaries and expand "
+                        "adversarial corpus."
+                    ),
+                    "owner": "security",
+                },
+                {
+                    "risk": (
+                        "Local deterministic suite does not replace external penetration testing."
+                    ),
+                    "severity": "medium",
+                    "mitigation": (
+                        "Schedule external red-team/compliance work before enterprise launch."
+                    ),
+                    "owner": "security",
+                },
+            ],
+        )
+
+    async def enforce_text_input(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        text: str,
+        boundary: str,
+        request_id: str,
+        block_on_secret: bool = True,
+    ) -> GuardrailDecision:
+        decision = self._input_validator.scan_text(
+            text, boundary=boundary, block_on_secret=block_on_secret
+        )
+        if decision.detected:
+            await self.record_decision(
+                actor=actor,
+                workspace_id=workspace_id,
+                decision=decision,
+                event_type=f"{boundary}.input_guardrail",
+                request_id=request_id,
+                target_type=None,
+                target_id=None,
+            )
+        if decision.blocked:
+            raise ValidationError(
+                "The request was blocked by security policy.",
+                details=findings_to_safe_metadata(decision.findings),
+            )
+        return decision
+
+    async def enforce_output(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        text: str,
+        boundary: str,
+        request_id: str,
+        target_type: str | None = None,
+        target_id: uuid.UUID | None = None,
+    ) -> GuardrailDecision:
+        decision = self._output_validator.scan_output(text, boundary=boundary)
+        if decision.detected:
+            await self.record_decision(
+                actor=actor,
+                workspace_id=workspace_id,
+                decision=decision,
+                event_type=f"{boundary}.output_guardrail",
+                request_id=request_id,
+                target_type=target_type,
+                target_id=target_id,
+            )
+        if decision.blocked:
+            raise ValidationError(
+                "The generated output was blocked by security policy.",
+                details=findings_to_safe_metadata(decision.findings),
+            )
+        return decision
+
+    async def enforce_quota(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        operation: str,
+        request_id: str,
+    ) -> None:
+        window_seconds = self._settings.security_rate_window_seconds
+        limit = self._quota_limit(operation)
+        now = datetime.now(UTC)
+        epoch = int(now.timestamp())
+        window_epoch = epoch - (epoch % window_seconds)
+        window_start = datetime.fromtimestamp(window_epoch, UTC)
+        quota_metadata: dict[str, object] | None = None
+        async with self._transactions() as tx:
+            decision = await tx.security.increment_quota_counter(
+                workspace_id=workspace_id,
+                actor_user_id=actor.user_id,
+                operation=operation,
+                window_start=window_start,
+                window_seconds=window_seconds,
+                limit=limit,
+            )
+            if not decision.allowed:
+                quota_metadata = {
+                    "operation": operation,
+                    "limit": decision.limit,
+                    "window_seconds": decision.window_seconds,
+                    "retry_after_seconds": decision.retry_after_seconds,
+                }
+        if quota_metadata is not None:
+            async with self._transactions() as tx:
+                await tx.security.record_security_event(
+                    workspace_id=workspace_id,
+                    actor_user_id=actor.user_id,
+                    event_type=f"{operation}.quota_exceeded",
+                    severity=SecurityEventSeverity.MEDIUM,
+                    outcome=SecurityEventOutcome.BLOCKED,
+                    request_id=request_id,
+                    target_type=None,
+                    target_id=None,
+                    control_version=GUARDRAIL_VERSION,
+                    safe_metadata=quota_metadata,
+                )
+            raise ResourceExhaustedError(
+                "The request was throttled by security policy.",
+                details={
+                    "code": "quota_exceeded",
+                    "operation": operation,
+                    "retry_after_seconds": quota_metadata["retry_after_seconds"],
+                },
+            )
+
+    async def record_decision(
+        self,
+        *,
+        actor: Actor,
+        workspace_id: uuid.UUID,
+        decision: GuardrailDecision,
+        event_type: str,
+        request_id: str,
+        target_type: str | None,
+        target_id: uuid.UUID | None,
+    ) -> None:
+        severity = _max_severity(decision.findings)
+        outcome = (
+            SecurityEventOutcome.BLOCKED
+            if decision.action is GuardrailAction.BLOCK
+            else SecurityEventOutcome.DETECTED
+        )
+        async with self._transactions() as tx:
+            await tx.security.record_security_event(
+                workspace_id=workspace_id,
+                actor_user_id=actor.user_id,
+                event_type=event_type,
+                severity=severity,
+                outcome=outcome,
+                request_id=request_id,
+                target_type=target_type,
+                target_id=target_id,
+                control_version=GUARDRAIL_VERSION,
+                safe_metadata=findings_to_safe_metadata(decision.findings),
+            )
+
+    def redacted_text(self, value: str) -> str:
+        return self._redactor.redact_text(value)
+
+    def _quota_limit(self, operation: str) -> int:
+        if operation == "search":
+            return self._settings.security_search_requests_per_window
+        if operation == "answer":
+            return self._settings.security_answer_requests_per_window
+        if operation == "research":
+            return self._settings.security_research_requests_per_window
+        return self._settings.security_search_requests_per_window
+
+
+_SEVERITY_ORDER: dict[str, int] = {
+    "info": 0,
+    "low": 1,
+    "medium": 2,
+    "high": 3,
+    "critical": 4,
+}
+
+
+def _max_severity(findings: Sequence[GuardrailFinding]) -> SecurityEventSeverity:
+    value = "info"
+    for finding in findings:
+        severity = getattr(finding, "severity", "info")
+        if _SEVERITY_ORDER.get(str(severity), 0) > _SEVERITY_ORDER[value]:
+            value = str(severity)
+    return SecurityEventSeverity(value)
+
+
 class DocumentService:
     def __init__(
         self,
@@ -203,6 +468,7 @@ class DocumentService:
         self._transactions = transaction_factory
         self._object_store = object_store
         self._settings = settings
+        self._security = SecurityService(transaction_factory, settings)
 
     async def create_source(
         self, actor: Actor, workspace_id: uuid.UUID, name: str, request_id: str
@@ -253,6 +519,33 @@ class DocumentService:
             if membership is None:
                 raise ResourceNotFoundError()
             require_permission(membership, Permission.DOCUMENT_CREATE)
+            decision = self._security._input_validator.scan_text(
+                f"{filename} {clean_media_type}",
+                boundary="upload_intent",
+                block_on_secret=False,
+            )
+            if decision.detected:
+                await tx.security.record_security_event(
+                    workspace_id=workspace_id,
+                    actor_user_id=actor.user_id,
+                    event_type="upload_intent.input_guardrail",
+                    severity=_max_severity(decision.findings),
+                    outcome=(
+                        SecurityEventOutcome.BLOCKED
+                        if decision.blocked
+                        else SecurityEventOutcome.DETECTED
+                    ),
+                    request_id=request_id,
+                    target_type=None,
+                    target_id=None,
+                    control_version=GUARDRAIL_VERSION,
+                    safe_metadata=findings_to_safe_metadata(decision.findings),
+                )
+            if decision.blocked:
+                raise ValidationError(
+                    "The request was blocked by security policy.",
+                    details=findings_to_safe_metadata(decision.findings),
+                )
             intent_id = uuid.uuid4()
             expires_at = datetime.now(UTC) + timedelta(
                 seconds=self._settings.upload_intent_ttl_seconds
@@ -310,6 +603,33 @@ class DocumentService:
                 )
             if intent.media_type != media_type.strip().lower():
                 raise ValidationError("The upload media type does not match the intent.")
+            if intent.media_type.startswith("text/"):
+                text_sample = body[: min(len(body), 4096)].decode("utf-8", errors="ignore")
+                decision = self._security._input_validator.scan_text(
+                    text_sample, boundary="upload_content", block_on_secret=True
+                )
+                if decision.detected:
+                    await tx.security.record_security_event(
+                        workspace_id=intent.workspace_id,
+                        actor_user_id=intent.created_by_user_id,
+                        event_type="upload_content.input_guardrail",
+                        severity=_max_severity(decision.findings),
+                        outcome=(
+                            SecurityEventOutcome.BLOCKED
+                            if decision.blocked
+                            else SecurityEventOutcome.DETECTED
+                        ),
+                        request_id="signed-upload",
+                        target_type="upload_intent",
+                        target_id=intent.id,
+                        control_version=GUARDRAIL_VERSION,
+                        safe_metadata=findings_to_safe_metadata(decision.findings),
+                    )
+                if decision.blocked:
+                    raise ValidationError(
+                        "The upload was blocked by security policy.",
+                        details=findings_to_safe_metadata(decision.findings),
+                    )
             self._object_store.verify_upload_token(
                 upload_intent_id=intent.id,
                 object_key=intent.object_key,
@@ -493,6 +813,7 @@ class SemanticSearchService:
         self._settings = settings
         self._provider = DeterministicLocalEmbeddingProvider(settings)
         self._transformer = DeterministicQueryTransformer()
+        self._security = SecurityService(transaction_factory, settings)
 
     async def search(
         self,
@@ -520,6 +841,23 @@ class SemanticSearchService:
             retrieval_config_version=(
                 retrieval_config_version or self._settings.retrieval_config_version
             ),
+        )
+
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.DOCUMENT_READ)
+        await self._security.enforce_text_input(
+            actor=actor,
+            workspace_id=workspace_id,
+            text=clean_query,
+            boundary="search",
+            request_id="service-search",
+            block_on_secret=True,
+        )
+        await self._security.enforce_quota(
+            actor=actor, workspace_id=workspace_id, operation="search", request_id="service-search"
         )
 
         batch = None
@@ -914,6 +1252,7 @@ class AnswerService:
         self._context_builder = ContextBuilder(settings)
         self._generator = DeterministicLocalGenerator(settings)
         self._citation_validator = CitationValidator()
+        self._security = SecurityService(transaction_factory, settings)
 
     async def answer(
         self,
@@ -931,6 +1270,22 @@ class AnswerService:
             raise ValidationError("Answer query must not be empty.")
         if len(clean_query) > self._settings.embedding_max_text_chars:
             raise ValidationError("Answer query exceeds the configured length limit.")
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.DOCUMENT_READ)
+        await self._security.enforce_text_input(
+            actor=actor,
+            workspace_id=workspace_id,
+            text=clean_query,
+            boundary="answer",
+            request_id="service-answer",
+            block_on_secret=True,
+        )
+        await self._security.enforce_quota(
+            actor=actor, workspace_id=workspace_id, operation="answer", request_id="service-answer"
+        )
         candidates, retrieval_debug = await self._search.search(
             actor=actor,
             workspace_id=workspace_id,
@@ -943,6 +1298,13 @@ class AnswerService:
         reranked = self._reranker.rerank(candidates)
         context = self._context_builder.build(reranked)
         generated = self._generator.generate(query=clean_query, context=context)
+        await self._security.enforce_output(
+            actor=actor,
+            workspace_id=workspace_id,
+            text=generated.text,
+            boundary="answer",
+            request_id="service-answer",
+        )
         self._citation_validator.validate(
             answer_text=generated.text,
             evidence=context.evidence,
@@ -1311,6 +1673,7 @@ class ResearchService:
         self._settings = settings
         self._search = SemanticSearchService(transaction_factory, settings)
         self._graph = DeterministicResearchGraph()
+        self._security = SecurityService(transaction_factory, settings)
 
     async def create_research_run(
         self,
@@ -1331,6 +1694,25 @@ class ResearchService:
             raise ValidationError("Research question must not be empty.")
         if len(clean_question) > self._settings.embedding_max_text_chars:
             raise ValidationError("Research question exceeds the configured length limit.")
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.RESEARCH_RUN_MANAGE)
+        await self._security.enforce_text_input(
+            actor=actor,
+            workspace_id=workspace_id,
+            text=f"{clean_purpose} {clean_question}",
+            boundary="research",
+            request_id="service-research",
+            block_on_secret=True,
+        )
+        await self._security.enforce_quota(
+            actor=actor,
+            workspace_id=workspace_id,
+            operation="research",
+            request_id="service-research",
+        )
         self._graph.validate_question(clean_question)
         budget = default_research_budget()
         budget_body = self._budget_dict(budget)
@@ -1510,6 +1892,15 @@ class ResearchService:
             checkpoint_state=latest_checkpoint.state,
             existing_usage=decided.usage,
             budget=self._budget_from_record(decided.budget),
+        )
+        await self._security.enforce_output(
+            actor=actor,
+            workspace_id=workspace_id,
+            text=output.report_text,
+            boundary="research",
+            request_id="service-research",
+            target_type="research_run",
+            target_id=decided.id,
         )
         async with self._transactions() as tx:
             membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)

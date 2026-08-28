@@ -529,7 +529,38 @@ flowchart TB
 
 Phase 9 deliberately implements a single bounded workflow rather than a general autonomous assistant. The default graph uses deterministic local tools and pauses before final synthesis so evidence and tool provenance can be inspected before a report is produced.
 
-## 8. Evidence-driven scale evolution
+## 8. Phase 10 security guardrail flow
+
+```mermaid
+flowchart LR
+    User[Workspace user] --> Web[Next.js web/BFF]
+    Web --> API[FastAPI route]
+    API --> Auth[Authn and RBAC\nfail closed]
+    Auth --> Input[Input guardrails\nprompt injection, secrets, SSRF]
+    Input --> Quota[Quota counter\nworkspace + actor + operation]
+    Quota --> Work[Search, answer,\nor research work]
+    Work --> Output[Output guardrails\nsecret/canary scan]
+    Output --> Response[Safe response]
+
+    Input -->|blocked/detected| Events[(security_events\nredacted)]
+    Quota -->|exceeded| Events
+    Output -->|blocked/detected| Events
+    API --> Posture[Admin posture/events API]
+    Posture --> Events
+    Work --> Trust[(content_trust_records\nfuture quarantine)]
+    Work --> Retention[(retention_tombstones\nfuture deletion propagation)]
+
+    classDef authority fill:var(--viz-series-1),color:var(--foreground),stroke:var(--border);
+    classDef control fill:var(--viz-series-3),color:var(--foreground),stroke:var(--border);
+    classDef store fill:var(--viz-series-4),color:var(--foreground),stroke:var(--border);
+    class Auth,Input,Quota,Output control;
+    class Events,Trust,Retention store;
+    class API authority;
+```
+
+Phase 10 keeps hard authority decisions deterministic: auth, tenant scope, quotas, egress, and citation/report validation do not depend on a model classifier. Model-assisted security can add signals later, but it cannot replace server-side policy enforcement.
+
+## 9. Evidence-driven scale evolution
 
 ```mermaid
 flowchart LR

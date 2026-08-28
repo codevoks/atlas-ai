@@ -91,6 +91,40 @@ export interface paths {
         patch: operations["rename_workspace_v1_workspaces__workspace_id__patch"];
         trace?: never;
     };
+    "/v1/workspaces/{workspace_id}/security/posture": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Security Posture */
+        get: operations["security_posture_v1_workspaces__workspace_id__security_posture_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workspaces/{workspace_id}/security/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Security Events */
+        get: operations["list_security_events_v1_workspaces__workspace_id__security_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workspaces/{workspace_id}/members": {
         parameters: {
             query?: never;
@@ -1653,6 +1687,73 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** SecurityEventListResponse */
+        SecurityEventListResponse: {
+            /** Items */
+            items: components["schemas"]["SecurityEventResponse"][];
+        };
+        /**
+         * SecurityEventOutcome
+         * @enum {string}
+         */
+        SecurityEventOutcome: "allowed" | "blocked" | "detected";
+        /** SecurityEventResponse */
+        SecurityEventResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /** Actor User Id */
+            actor_user_id: string | null;
+            /** Event Type */
+            event_type: string;
+            severity: components["schemas"]["SecurityEventSeverity"];
+            outcome: components["schemas"]["SecurityEventOutcome"];
+            /** Request Id */
+            request_id: string;
+            /** Target Type */
+            target_type: string | null;
+            /** Target Id */
+            target_id: string | null;
+            /** Control Version */
+            control_version: string;
+            /** Safe Metadata */
+            safe_metadata: {
+                [key: string]: unknown;
+            };
+            /** Created At */
+            created_at: string;
+        };
+        /**
+         * SecurityEventSeverity
+         * @enum {string}
+         */
+        SecurityEventSeverity: "info" | "low" | "medium" | "high" | "critical";
+        /** SecurityPostureResponse */
+        SecurityPostureResponse: {
+            /** Policy Config Version */
+            policy_config_version: string;
+            /** Guardrail Version */
+            guardrail_version: string;
+            /** Zero Cost */
+            zero_cost: boolean;
+            /** Paid Services Enabled */
+            paid_services_enabled: boolean;
+            /** Fail Closed Controls */
+            fail_closed_controls: string[];
+            /** Deterministic Controls */
+            deterministic_controls: string[];
+            /** Residual Risks */
+            residual_risks: {
+                [key: string]: unknown;
+            }[];
+        };
         /** SemanticSearchFilters */
         SemanticSearchFilters: {
             /** Source Id */
@@ -2048,6 +2149,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkspaceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    security_posture_v1_workspaces__workspace_id__security_posture_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecurityPostureResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_security_events_v1_workspaces__workspace_id__security_events_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecurityEventListResponse"];
                 };
             };
             /** @description Validation Error */
