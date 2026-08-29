@@ -48,6 +48,55 @@
         }
       }
     },
+    "/internal/ops/metrics": {
+      "get": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "Internal Ops Metrics",
+        "operationId": "internal_ops_metrics_internal_ops_metrics_get",
+        "parameters": [
+          {
+            "name": "X-Atlas-Internal-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Atlas-Internal-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationsPostureResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/me": {
       "get": {
         "tags": [
@@ -355,6 +404,54 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SecurityEventListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/operations/posture": {
+      "get": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "Operations Posture",
+        "operationId": "operations_posture_v1_workspaces__workspace_id__operations_posture_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationsPostureResponse"
                 }
               }
             }
@@ -4572,6 +4669,95 @@
         ],
         "title": "MemberUpdate"
       },
+      "OperationsPostureResponse": {
+        "properties": {
+          "posture_version": {
+            "type": "string",
+            "title": "Posture Version"
+          },
+          "telemetry_schema_version": {
+            "type": "string",
+            "title": "Telemetry Schema Version"
+          },
+          "zero_cost": {
+            "type": "boolean",
+            "title": "Zero Cost"
+          },
+          "paid_services_enabled": {
+            "type": "boolean",
+            "title": "Paid Services Enabled"
+          },
+          "telemetry_exporter": {
+            "type": "string",
+            "title": "Telemetry Exporter"
+          },
+          "telemetry_content_capture_enabled": {
+            "type": "boolean",
+            "title": "Telemetry Content Capture Enabled"
+          },
+          "retained_trace_count": {
+            "type": "integer",
+            "title": "Retained Trace Count"
+          },
+          "dropped_trace_count": {
+            "type": "integer",
+            "title": "Dropped Trace Count"
+          },
+          "dependency_status": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Dependency Status"
+          },
+          "slo_summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Slo Summary"
+          },
+          "capacity_envelope": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Capacity Envelope"
+          },
+          "cost_summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Cost Summary"
+          },
+          "runbooks": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Runbooks"
+          },
+          "routes": {
+            "items": {
+              "$ref": "#/components/schemas/RouteMetricResponse"
+            },
+            "type": "array",
+            "title": "Routes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "posture_version",
+          "telemetry_schema_version",
+          "zero_cost",
+          "paid_services_enabled",
+          "telemetry_exporter",
+          "telemetry_content_capture_enabled",
+          "retained_trace_count",
+          "dropped_trace_count",
+          "dependency_status",
+          "slo_summary",
+          "capacity_envelope",
+          "cost_summary",
+          "runbooks",
+          "routes"
+        ],
+        "title": "OperationsPostureResponse"
+      },
       "ResearchApprovalDecision": {
         "properties": {
           "version": {
@@ -5005,6 +5191,44 @@
           "viewer"
         ],
         "title": "Role"
+      },
+      "RouteMetricResponse": {
+        "properties": {
+          "route": {
+            "type": "string",
+            "title": "Route"
+          },
+          "method": {
+            "type": "string",
+            "title": "Method"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "error_count": {
+            "type": "integer",
+            "title": "Error Count"
+          },
+          "p95_ms": {
+            "type": "number",
+            "title": "P95 Ms"
+          },
+          "max_ms": {
+            "type": "number",
+            "title": "Max Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "route",
+          "method",
+          "count",
+          "error_count",
+          "p95_ms",
+          "max_ms"
+        ],
+        "title": "RouteMetricResponse"
       },
       "SearchRequest": {
         "properties": {

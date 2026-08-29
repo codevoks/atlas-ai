@@ -279,3 +279,27 @@ Residual risks and deferrals:
 - `content_trust_records` and `retention_tombstones` are data-model foundations in Phase 10; full deletion/export orchestration and quarantine workflow UI remain production hardening work.
 - Redis/distributed rate limiting remains deferred. PostgreSQL fixed-window counters are authoritative and sufficient for the current local product gate, but high-scale deployment should evaluate Redis or dedicated rate-limit infrastructure.
 - Security event retention, SOC escalation, alert routing, and key-rotation drills require organizational policy and deployment targets before they can be claimed complete.
+
+## Phase 11 implementation security and operations review
+
+Phase 11 adds local observability, operational posture visibility, CI/container artifacts, and a plan-only AWS/Terraform baseline without provisioning billable resources.
+
+Security and reliability controls implemented:
+
+- API requests receive a stable `X-Request-ID` and `X-Trace-ID`; middleware records bounded local telemetry by route template, method, status, and latency.
+- Telemetry capture excludes request bodies, response bodies, prompts, retrieved chunks, document text, provider payloads, credentials, and raw tenant content.
+- Workspace operations posture is exposed only to owners/admins through the existing `security:read` permission and membership boundary.
+- Internal metrics require an explicit `X-Atlas-Internal-Token`; production configuration fails closed if the token is missing or too short.
+- Liveness remains lightweight. Readiness checks the database dependency and returns a typed dependency-unavailable error when the authoritative store is unreachable.
+- Operations posture reports zero-cost status, disabled paid services, SLO objectives, observed local route metrics, dependency status, capacity bottleneck watchlists, cost posture, and runbook summaries.
+- The Phase 11 artifact validator asserts that CI does not apply Terraform or request AWS credentials, the default Terraform baseline declares no resources, billable provisioning remains disabled, and local PostgreSQL remains the default demo dependency.
+- Dockerfiles define buildable service images for API, worker, and web without embedding secrets or enabling hosted providers.
+- The AWS baseline is documentation/plan-only: it contains least-privilege service-boundary assumptions and IAM-policy intent but no resource creation. Future billable provisioning requires explicit approval and a separate reviewed change.
+
+Residual risks and deferrals:
+
+- Local in-memory telemetry is not a production metrics backend. Hosted export, alert routing, dashboards, retention controls, and on-call workflows remain deployment work.
+- The default repository does not provision AWS, domains, managed search, managed queues, hosted observability, or paid model providers.
+- Terraform policy is a baseline artifact, not applied infrastructure evidence. Real AWS rollout still requires provider configuration, remote state, OIDC trust, network policies, encrypted storage, secrets rotation, backup policies, and rollback drills in an approved account.
+- Container images are build specifications; registry signing, SBOM generation, vulnerability scanning, and environment promotion need deployment-specific infrastructure.
+- OpenSearch remains rejected for the current baseline because no measured trigger has been met. Adoption still requires projection, shadow-read comparison, reconciliation, cutover, and rollback evidence.

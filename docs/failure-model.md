@@ -28,6 +28,8 @@ All boundaries normalize failures into: invalid input; unauthenticated; unauthor
 | Telemetry exporter down | Core path continues within bounded buffer/drop; no memory/disk cascade | Exporter health/drop metric and backpressure policy |
 | Derived OpenSearch lag | PostgreSQL truth prevents unauthorized/deleted results; freshness is visible | Cursor/tombstone/reconciliation, shadow/fallback, rebuild |
 | Bad migration/deploy | Old/new versions coexist during expand/contract; rollback does not corrupt | Compatibility tests, protected rollout, backup/restore/reindex plan |
+| Missing internal operations token | Internal metrics stay unavailable; production configuration refuses to start | Configure `OPS_INTERNAL_TOKEN` through the deployment secret manager and verify `/internal/ops/metrics` with the token |
+| Billable provisioning attempted from default path | No cloud resources are created by repository defaults | Phase 11 artifact validation rejects CI Terraform apply, AWS credentials in CI, and Terraform resource blocks |
 
 ## Retry and timeout rules
 
@@ -42,3 +44,9 @@ Fail closed for identity, authorization, tenant ambiguity, active-version public
 Each phase adds crash-point tests and an operator-visible repair path. Production hardening proves PostgreSQL restore, object recovery/versioning policy, derived-index rebuild, migration rollback/forward-fix, job reconciliation, checkpoint resume, secret rotation, and deletion propagation. A backup is not a recovery capability until restored and timed.
 
 Phase 4 recovery evidence covers deterministic parser/chunker/embedding tests, corrupt/binary/unsupported input failure tests, parser byte-limit enforcement, chunk-count enforcement, embedding dimension/normalization checks, semantic-search bounds checks, and integration coverage that published chunks/embeddings remain tenant-scoped and are written only with ready document-version metadata.
+
+Phase 11 recovery evidence covers readiness behavior, protected operations metrics, content-off
+telemetry, local SLO observation, no-billable Terraform defaults, CI validation structure, and
+container build specifications. Real cloud restore, remote-state recovery, registry signing, and
+production rollback drills remain deployment-specific work until an approved account/environment
+exists.

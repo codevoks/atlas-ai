@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -16,6 +17,7 @@ from atlas_api.application.services import (
     AnswerService,
     DocumentService,
     EvaluationService,
+    OperationsService,
     ResearchService,
     SecurityService,
     SemanticSearchService,
@@ -26,6 +28,7 @@ from atlas_api.domain.errors import ConflictError, DomainError
 from atlas_api.infrastructure.database import create_engine, create_session_factory
 from atlas_api.infrastructure.object_store import LocalObjectStore
 from atlas_api.infrastructure.repositories import IdentityRepository, SqlAlchemyTransactionFactory
+from atlas_api.operations.telemetry import LocalTelemetry, route_template_from_scope
 from atlas_api.security.authentication import create_identity_verifier
 
 logger = logging.getLogger("atlas_api")
@@ -59,6 +62,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     session_factory = create_session_factory(engine)
     transaction_factory = SqlAlchemyTransactionFactory(session_factory)
     object_store = LocalObjectStore(resolved_settings)
+    telemetry = LocalTelemetry(resolved_settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -66,6 +70,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.engine = engine
         app.state.session_factory = session_factory
         app.state.object_store = object_store
+        app.state.telemetry = telemetry
         app.state.identity_verifier = create_identity_verifier(resolved_settings)
         app.state.identity_repository = IdentityRepository(session_factory)
         app.state.workspace_service = WorkspaceService(transaction_factory)
@@ -79,6 +84,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.evaluation_service = EvaluationService(transaction_factory, resolved_settings)
         app.state.research_service = ResearchService(transaction_factory, resolved_settings)
         app.state.security_service = SecurityService(transaction_factory, resolved_settings)
+        app.state.operations_service = OperationsService(
+            transaction_factory, resolved_settings, telemetry
+        )
         yield
         await engine.dispose()
 
@@ -106,8 +114,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ValueError:
             request_id = str(uuid.uuid4())
         request.state.request_id = request_id
+        trace_id = request.headers.get("traceparent", "").split("-")[1:2]
+        request.state.trace_id = trace_id[0] if trace_id else telemetry.start_trace_id()
+        started = time.perf_counter()
         response = await call_next(request)
+        duration_ms = (time.perf_counter() - started) * 1000
+        telemetry.record_request(
+            trace_id=str(request.state.trace_id),
+            request_id=request_id,
+            method=request.method,
+            route=route_template_from_scope(request.scope),
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+        )
         response.headers["X-Request-ID"] = request_id
+        response.headers["X-Trace-ID"] = str(request.state.trace_id)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         return response

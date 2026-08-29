@@ -26,6 +26,7 @@ import {
   getIngestionJob,
   getMe,
   getMembers,
+  getOperationsPosture,
   getResearchRuns,
   getSecurityEvents,
   getSecurityPosture,
@@ -33,6 +34,7 @@ import {
   getWorkspace,
   searchEvidence,
   type RetrievalConfigVersion,
+  type OperationsPosture,
   type ResearchRun,
   type SecurityEvent,
   type SecurityPosture,
@@ -65,6 +67,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
   let researchRuns;
   let securityPosture: SecurityPosture | null = null;
   let securityEvents: SecurityEvent[] = [];
+  let operationsPosture: OperationsPosture | null = null;
   try {
     [me, workspace, members, sources, documents, evaluationRuns, researchRuns] = await Promise.all([
       getMe(),
@@ -76,9 +79,10 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
       getResearchRuns(workspaceId),
     ]);
     if (workspace.role === "owner" || workspace.role === "admin") {
-      [securityPosture, securityEvents] = await Promise.all([
+      [securityPosture, securityEvents, operationsPosture] = await Promise.all([
         getSecurityPosture(workspaceId),
         getSecurityEvents(workspaceId),
+        getOperationsPosture(workspaceId),
       ]);
     }
   } catch (requestError) {
@@ -203,6 +207,51 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
               ) : (
                 <p className="muted">No security events recorded yet.</p>
               )}
+            </div>
+          </section>
+        ) : null}
+
+        {operationsPosture ? (
+          <section className="search-panel">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Operations</p>
+                <h2>Production readiness posture</h2>
+              </div>
+              <span className="count">{operationsPosture.routes.length}</span>
+            </div>
+            <div className="result-card">
+              <div className="result-card-header">
+                <strong>{operationsPosture.posture_version}</strong>
+                <span>{operationsPosture.zero_cost ? "$0.00 local validation" : "external cost enabled"}</span>
+              </div>
+              <div className="metric-grid">
+                <div><span>Telemetry</span><strong>{operationsPosture.telemetry_exporter}</strong></div>
+                <div><span>Content capture</span><strong>{operationsPosture.telemetry_content_capture_enabled ? "enabled" : "disabled"}</strong></div>
+                <div><span>Traces</span><strong>{operationsPosture.retained_trace_count}</strong></div>
+                <div><span>Paid services</span><strong>{operationsPosture.paid_services_enabled ? "enabled" : "disabled"}</strong></div>
+              </div>
+              <p className="muted">
+                SLO status: {formatSloStatus(operationsPosture.slo_summary)} · DB{" "}
+                {String(operationsPosture.dependency_status.database ?? "unknown")}
+              </p>
+              <p className="muted">
+                Capacity path: {String(operationsPosture.capacity_envelope.search_projection ?? "unknown")}
+              </p>
+            </div>
+            <div className="results-list">
+              {operationsPosture.routes.slice(0, 6).map((metric) => (
+                <article className="result-card compact" key={`${metric.method}-${metric.route}`}>
+                  <div className="result-card-header">
+                    <strong>{metric.method} {metric.route}</strong>
+                    <span>p95 {metric.p95_ms.toFixed(1)}ms</span>
+                  </div>
+                  <p className="muted">
+                    count {metric.count} · errors {metric.error_count} · max{" "}
+                    {metric.max_ms.toFixed(1)}ms
+                  </p>
+                </article>
+              ))}
             </div>
           </section>
         ) : null}
@@ -806,4 +855,14 @@ function formatFindings(metadata: Record<string, unknown>): string {
     })
     .filter((item): item is string => Boolean(item))
     .join(", ");
+}
+
+function formatSloStatus(summary: Record<string, unknown>): string {
+  const value = summary.within_objective;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "unknown";
+  const statuses = value as Record<string, unknown>;
+  const failing = Object.entries(statuses)
+    .filter(([, passed]) => passed === false)
+    .map(([name]) => name);
+  return failing.length === 0 ? "within objectives" : `needs attention: ${failing.join(", ")}`;
 }

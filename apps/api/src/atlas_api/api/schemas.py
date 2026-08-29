@@ -22,9 +22,11 @@ from atlas_api.application.ports import (
     EvaluationRunRecord,
     IngestionJobRecord,
     MemberRecord,
+    OperationsPostureRecord,
     ResearchApprovalRecord,
     ResearchRunRecord,
     ResearchStepRecord,
+    RouteMetricRecord,
     SearchCandidate,
     SecurityEventRecord,
     SecurityPostureRecord,
@@ -221,6 +223,62 @@ class SecurityPostureResponse(BaseModel):
             fail_closed_controls=record.fail_closed_controls,
             deterministic_controls=record.deterministic_controls,
             residual_risks=record.residual_risks,
+        )
+
+
+class RouteMetricResponse(BaseModel):
+    route: str
+    method: str
+    count: int
+    error_count: int
+    p95_ms: float
+    max_ms: float
+
+    @classmethod
+    def from_record(cls, record: RouteMetricRecord) -> RouteMetricResponse:
+        return cls(
+            route=record.route,
+            method=record.method,
+            count=record.count,
+            error_count=record.error_count,
+            p95_ms=record.p95_ms,
+            max_ms=record.max_ms,
+        )
+
+
+class OperationsPostureResponse(BaseModel):
+    posture_version: str
+    telemetry_schema_version: str
+    zero_cost: bool
+    paid_services_enabled: bool
+    telemetry_exporter: str
+    telemetry_content_capture_enabled: bool
+    retained_trace_count: int
+    dropped_trace_count: int
+    dependency_status: dict[str, Any]
+    slo_summary: dict[str, Any]
+    capacity_envelope: dict[str, Any]
+    cost_summary: dict[str, Any]
+    runbooks: list[dict[str, Any]]
+    routes: list[RouteMetricResponse]
+
+    @classmethod
+    def from_record(cls, record: OperationsPostureRecord) -> OperationsPostureResponse:
+        return cls(
+            posture_version=record.posture_version,
+            telemetry_schema_version=record.telemetry_schema_version,
+            zero_cost=record.zero_cost,
+            paid_services_enabled=record.paid_services_enabled,
+            telemetry_exporter=record.telemetry_exporter,
+            telemetry_content_capture_enabled=record.telemetry_content_capture_enabled,
+            retained_trace_count=record.retained_trace_count,
+            dropped_trace_count=record.dropped_trace_count,
+            dependency_status=record.dependency_status,
+            slo_summary=record.slo_summary,
+            capacity_envelope=record.capacity_envelope,
+            cost_summary=record.cost_summary,
+            runbooks=record.runbooks,
+            routes=[RouteMetricResponse.from_record(item) for item in record.routes],
         )
 
 

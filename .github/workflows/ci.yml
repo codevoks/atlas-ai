@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Build, test, and hardening checks
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.6-alpine
+        env:
+          POSTGRES_DB: atlas
+          POSTGRES_USER: atlas
+          POSTGRES_PASSWORD: atlas_local_only
+        ports:
+          - 54329:5432
+        options: >-
+          --health-cmd "pg_isready -U atlas -d atlas"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      AUTH_DEV_SECRET: atlas-phase11-ci-development-secret
+      UPLOAD_SIGNING_SECRET: atlas-phase11-ci-upload-signing-secret
+      OPS_INTERNAL_TOKEN: atlas-phase11-ci-internal-operations-token
+      DATABASE_URL: postgresql+asyncpg://atlas:atlas_local_only@localhost:54329/atlas
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install Node dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Python services
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -e "apps/api[dev]" -e "apps/worker[dev]"
+
+      - name: Apply migrations
+        run: pnpm db:migrate
+
+      - name: Validate zero-cost hardening artifacts
+        run: python tools/ops/validate_phase11_artifacts.py
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Test
+        run: pnpm run test
+
+      - name: Build
+        run: pnpm run build

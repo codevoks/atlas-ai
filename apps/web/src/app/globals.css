@@ -95,6 +95,15 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px c
 .search-result { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-raised); padding: 16px; }
 .search-result div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .search-result p { color: var(--ink); margin: 0; line-height: 1.55; }
+.result-card { display: grid; gap: 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-raised); padding: 16px; }
+.result-card.compact { gap: 8px; padding: 14px; }
+.result-card-header { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
+.result-card-header strong, .result-card-header span { overflow-wrap: anywhere; }
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.metric-grid > div, .metric-grid > span { display: grid; gap: 4px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--surface), transparent 2%); padding: 10px; }
+.metric-grid span, .metric-grid div > span { color: var(--muted); font-size: 0.78rem; line-height: 1.35; }
+.metric-grid strong { color: var(--ink); overflow-wrap: anywhere; }
+.results-list { display: grid; gap: 12px; margin-top: 12px; }
 .approval-box, .report-preview { display: grid !important; align-items: stretch !important; justify-content: stretch !important; gap: 10px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--accent-soft), transparent 45%); padding: 14px; }
 .button-row { display: flex; align-items: center; justify-content: flex-start; gap: 10px; }
 .report-preview pre { margin: 0; max-height: 360px; overflow: auto; white-space: pre-wrap; color: var(--ink); font-family: var(--font-mono), monospace; font-size: 0.82rem; line-height: 1.55; }

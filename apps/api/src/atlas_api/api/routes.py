@@ -11,6 +11,7 @@ from atlas_api.api.dependencies import (
     AnswerServiceDependency,
     DocumentServiceDependency,
     EvaluationServiceDependency,
+    OperationsServiceDependency,
     ResearchServiceDependency,
     SecurityServiceDependency,
     SemanticSearchServiceDependency,
@@ -45,6 +46,7 @@ from atlas_api.api.schemas import (
     MemberResponse,
     MemberUpdate,
     MeResponse,
+    OperationsPostureResponse,
     ResearchApprovalDecision,
     ResearchRunCancel,
     ResearchRunCreate,
@@ -70,7 +72,7 @@ from atlas_api.api.schemas import (
     WorkspaceUpdate,
 )
 from atlas_api.application.ports import SearchFilter
-from atlas_api.domain.errors import DependencyUnavailableError, ValidationError
+from atlas_api.domain.errors import DependencyUnavailableError, ForbiddenError, ValidationError
 
 router = APIRouter()
 
@@ -88,6 +90,24 @@ async def readiness(request: Request) -> HealthResponse:
     except Exception as error:
         raise DependencyUnavailableError("The database is unavailable.") from error
     return HealthResponse(status="ready", service="atlas-api")
+
+
+@router.get(
+    "/internal/ops/metrics",
+    response_model=OperationsPostureResponse,
+    tags=["operations"],
+)
+async def internal_ops_metrics(
+    request: Request,
+    service: OperationsServiceDependency,
+    internal_token: Annotated[str | None, Header(alias="X-Atlas-Internal-Token")] = None,
+) -> OperationsPostureResponse:
+    configured_token = request.app.state.settings.ops_internal_token
+    if configured_token is None:
+        raise DependencyUnavailableError("Internal operations token is not configured.")
+    if internal_token != configured_token:
+        raise ForbiddenError()
+    return OperationsPostureResponse.from_record(service.metrics_snapshot())
 
 
 @router.get("/v1/me", response_model=MeResponse, tags=["identity"])
@@ -165,6 +185,19 @@ async def list_security_events(
     return SecurityEventListResponse(
         items=[SecurityEventResponse.from_record(item) for item in records]
     )
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/operations/posture",
+    response_model=OperationsPostureResponse,
+    tags=["operations"],
+)
+async def operations_posture(
+    workspace_id: uuid.UUID,
+    actor: ActorDependency,
+    service: OperationsServiceDependency,
+) -> OperationsPostureResponse:
+    return OperationsPostureResponse.from_record(await service.posture(actor, workspace_id))
 
 
 @router.patch(

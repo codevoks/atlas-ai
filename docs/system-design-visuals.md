@@ -560,7 +560,35 @@ flowchart LR
 
 Phase 10 keeps hard authority decisions deterministic: auth, tenant scope, quotas, egress, and citation/report validation do not depend on a model classifier. Model-assisted security can add signals later, but it cannot replace server-side policy enforcement.
 
-## 9. Evidence-driven scale evolution
+## 9. Phase 11 operations and deployment hardening
+
+```mermaid
+flowchart TB
+    Browser[Browser/BFF request] --> API[FastAPI route]
+    API --> Trace[Request middleware\nX-Request-ID + X-Trace-ID]
+    Trace --> LocalTelemetry[Bounded local telemetry\nroute, status, latency only]
+    API --> DB[(PostgreSQL\nreadiness dependency)]
+    API --> Domain[Existing product services\nsearch, answer, research, security]
+    LocalTelemetry --> OpsAPI[Admin operations posture API]
+    LocalTelemetry --> Internal[Internal metrics endpoint\nexplicit token required]
+    OpsAPI --> UI[Workspace operations panel]
+    Internal --> CI[CI/local validation]
+    CI --> Containers[API/web/worker Dockerfiles]
+    CI --> ArtifactCheck[Phase 11 artifact validator]
+    ArtifactCheck --> Terraform[Plan-only AWS Terraform\n0 resources, apply disabled]
+    Terraform -->|future explicit approval only| AWS[AWS deployment baseline]
+
+    classDef control fill:var(--viz-series-1),color:var(--foreground),stroke:var(--border);
+    classDef store fill:var(--viz-series-4),color:var(--foreground),stroke:var(--border);
+    classDef future fill:var(--viz-series-2),color:var(--foreground),stroke:var(--border),stroke-dasharray: 4 3;
+    class Trace,LocalTelemetry,OpsAPI,Internal,ArtifactCheck control;
+    class DB store;
+    class AWS future;
+```
+
+Phase 11 proves the operational boundary without turning the repository into a live cloud deployment. Local telemetry is safe-by-default and content-off. The AWS baseline is a reviewed plan artifact with billable resource creation disabled; real provisioning remains a separate opt-in deployment decision.
+
+## 10. Evidence-driven scale evolution
 
 ```mermaid
 flowchart LR

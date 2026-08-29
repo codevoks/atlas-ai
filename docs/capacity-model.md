@@ -32,6 +32,11 @@ Atlas capacity plans are scenario worksheets. Values are not product facts until
 
 For each expected/peak/skew scenario record corpus/tenant distribution, query mix, filter selectivity, upload types/sizes, provider quotas, concurrency, target freshness and latency, availability window, retention, and RTO/RPO. Test with representative small safe fixtures scaled synthetically; quality tests need real labeled distributions, while load data must not contain private content.
 
+Phase 11 implements the first executable local SLO posture. The default objectives are API route
+p95, search p95, answer p95, and research-resume p95. Local telemetry records route templates,
+status codes, and durations only, then reports observed values through the operations posture API.
+These values are local validation evidence, not production capacity claims.
+
 ## Measure and graph
 
 - HTTP/search/answer p50/p95/p99 latency and error by stage/config.
@@ -50,3 +55,7 @@ Provider quotas/latency: batch, bound concurrency, backpressure, caching only wh
 ## Evidence gates
 
 OpenSearch needs representative PostgreSQL search failure or required features plus shadow quality/latency/cost/operational comparison. Microservices need independent scale/failure/ownership pressure. Multi-region needs explicit availability/residency/RTO/RPO. Advanced RAG and agents need quality improvement on named slices after added latency/cost/failure. Infrastructure size is selected from measured load, not repository documentation.
+
+Phase 11 does not meet an OpenSearch trigger. PostgreSQL remains authoritative, and any future
+derived search projection requires shadow-read comparison, reconciliation lag monitoring, cutover
+flagging, rollback evidence, and explicit operational cost review.

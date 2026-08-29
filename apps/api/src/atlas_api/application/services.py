@@ -41,8 +41,10 @@ from atlas_api.application.ports import (
     EvaluationRunRecord,
     IngestionJobRecord,
     MemberRecord,
+    OperationsPostureRecord,
     ResearchBudget,
     ResearchRunRecord,
+    RouteMetricRecord,
     SearchCandidate,
     SearchFilter,
     SecurityEventRecord,
@@ -86,6 +88,12 @@ from atlas_api.domain.models import (
 )
 from atlas_api.domain.policy import can_manage_role, require_permission
 from atlas_api.infrastructure.object_store import LocalObjectStore
+from atlas_api.operations.telemetry import (
+    OPERATIONS_POSTURE_VERSION,
+    LocalTelemetry,
+    TelemetrySnapshot,
+    evaluate_slo_status,
+)
 from atlas_api.security.guardrails import (
     DEFAULT_POLICY_CONFIG_VERSION,
     GUARDRAIL_VERSION,
@@ -456,6 +464,105 @@ def _max_severity(findings: Sequence[GuardrailFinding]) -> SecurityEventSeverity
         if _SEVERITY_ORDER.get(str(severity), 0) > _SEVERITY_ORDER[value]:
             value = str(severity)
     return SecurityEventSeverity(value)
+
+
+class OperationsService:
+    def __init__(
+        self,
+        transaction_factory: TransactionFactory,
+        settings: Settings,
+        telemetry: LocalTelemetry,
+    ) -> None:
+        self._transactions = transaction_factory
+        self._settings = settings
+        self._telemetry = telemetry
+
+    async def posture(self, actor: Actor, workspace_id: uuid.UUID) -> OperationsPostureRecord:
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.SECURITY_READ)
+        return self._posture_from_snapshot(self._telemetry.snapshot(), database_status="ready")
+
+    def metrics_snapshot(self) -> OperationsPostureRecord:
+        return self._posture_from_snapshot(
+            self._telemetry.snapshot(), database_status="not_checked"
+        )
+
+    def _posture_from_snapshot(
+        self, snapshot: TelemetrySnapshot, *, database_status: str
+    ) -> OperationsPostureRecord:
+        return OperationsPostureRecord(
+            posture_version=OPERATIONS_POSTURE_VERSION,
+            telemetry_schema_version=snapshot.schema_version,
+            zero_cost=True,
+            paid_services_enabled=False,
+            telemetry_exporter=snapshot.exporter,
+            telemetry_content_capture_enabled=snapshot.content_capture_enabled,
+            retained_trace_count=snapshot.retained_trace_count,
+            dropped_trace_count=snapshot.dropped_trace_count,
+            dependency_status={
+                "database": database_status,
+                "object_store": "local_filesystem",
+                "model_providers": "deterministic_local_only",
+                "observability_export": snapshot.exporter,
+                "cloud_provisioning": "disabled_by_default",
+            },
+            slo_summary=evaluate_slo_status(snapshot, self._settings),
+            capacity_envelope={
+                "schema_version": "phase11-capacity-envelope-v1",
+                "validated_profile": "local_zero_cost",
+                "current_authoritative_store": "postgresql",
+                "current_object_store": "local_filesystem",
+                "search_projection": "postgresql_authoritative_no_opensearch_trigger",
+                "bottleneck_watchlist": [
+                    "database_connection_pool",
+                    "ingestion_queue_oldest_age",
+                    "search_p95_latency",
+                    "answer_context_budget",
+                    "research_step_budget",
+                ],
+            },
+            cost_summary={
+                "schema_version": "phase11-cost-summary-v1",
+                "demo_cost_usd": 0.0,
+                "paid_model_api_required": False,
+                "paid_cloud_required": False,
+                "billable_provisioning_default": "disabled",
+            },
+            runbooks=[
+                {
+                    "name": "Readiness failure",
+                    "detection": "health/ready returns dependency_unavailable",
+                    "containment": "stop routing traffic to the instance",
+                    "recovery": "restore database connectivity and rerun readiness check",
+                },
+                {
+                    "name": "Bad migration or deploy",
+                    "detection": "CI or post-deploy readiness fails",
+                    "containment": "freeze rollout and keep previous image active",
+                    "recovery": "apply expand/migrate/contract rollback plan",
+                },
+                {
+                    "name": "Search latency regression",
+                    "detection": "search p95 exceeds configured SLO",
+                    "containment": "reduce fan-out/config and inspect retrieval traces",
+                    "recovery": "benchmark indexes/projections before enabling a new backend",
+                },
+            ],
+            routes=[
+                RouteMetricRecord(
+                    route=metric.route,
+                    method=metric.method,
+                    count=metric.count,
+                    error_count=metric.error_count,
+                    p95_ms=metric.p95_ms,
+                    max_ms=metric.max_ms,
+                )
+                for metric in snapshot.routes
+            ],
+        )
 
 
 class DocumentService:

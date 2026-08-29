@@ -578,6 +578,34 @@ class SecurityPostureRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class RouteMetricRecord:
+    route: str
+    method: str
+    count: int
+    error_count: int
+    p95_ms: float
+    max_ms: float
+
+
+@dataclass(frozen=True, slots=True)
+class OperationsPostureRecord:
+    posture_version: str
+    telemetry_schema_version: str
+    zero_cost: bool
+    paid_services_enabled: bool
+    telemetry_exporter: str
+    telemetry_content_capture_enabled: bool
+    retained_trace_count: int
+    dropped_trace_count: int
+    dependency_status: dict[str, object]
+    slo_summary: dict[str, object]
+    capacity_envelope: dict[str, object]
+    cost_summary: dict[str, object]
+    runbooks: list[dict[str, object]]
+    routes: list[RouteMetricRecord]
+
+
+@dataclass(frozen=True, slots=True)
 class QuotaDecisionRecord:
     allowed: bool
     operation: str

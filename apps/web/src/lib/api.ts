@@ -260,6 +260,32 @@ export interface SecurityPosture {
   residual_risks: Record<string, unknown>[];
 }
 
+export interface RouteMetric {
+  route: string;
+  method: string;
+  count: number;
+  error_count: number;
+  p95_ms: number;
+  max_ms: number;
+}
+
+export interface OperationsPosture {
+  posture_version: string;
+  telemetry_schema_version: string;
+  zero_cost: boolean;
+  paid_services_enabled: boolean;
+  telemetry_exporter: string;
+  telemetry_content_capture_enabled: boolean;
+  retained_trace_count: number;
+  dropped_trace_count: number;
+  dependency_status: Record<string, unknown>;
+  slo_summary: Record<string, unknown>;
+  capacity_envelope: Record<string, unknown>;
+  cost_summary: Record<string, unknown>;
+  runbooks: Record<string, unknown>[];
+  routes: RouteMetric[];
+}
+
 interface ApiErrorPayload {
   error?: { code?: string; message?: string; request_id?: string };
 }
@@ -425,6 +451,10 @@ export async function getSecurityEvents(workspaceId: string): Promise<SecurityEv
     `/v1/workspaces/${workspaceId}/security/events?limit=8`,
   );
   return payload.items;
+}
+
+export async function getOperationsPosture(workspaceId: string): Promise<OperationsPosture> {
+  return apiRequest<OperationsPosture>(`/v1/workspaces/${workspaceId}/operations/posture`);
 }
 
 export async function createResearchRun(

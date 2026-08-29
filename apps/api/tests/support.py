@@ -20,6 +20,7 @@ def make_settings() -> Settings:
         database_url="postgresql+asyncpg://atlas:atlas_local_only@localhost:54329/atlas",
         object_store_root=".local-object-store-test",
         upload_signing_secret="atlas-phase2-test-upload-signing-secret",  # noqa: S106
+        ops_internal_token="atlas-phase11-test-ops-internal-token",  # noqa: S106
     )
 
 

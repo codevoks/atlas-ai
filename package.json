@@ -13,6 +13,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "contracts": "pnpm --filter @atlas/shared-types generate",
+    "ops:validate": "python tools/ops/validate_phase11_artifacts.py",
     "db:migrate": "pnpm --filter @atlas/api db:migrate",
     "db:downgrade": "pnpm --filter @atlas/api db:downgrade"
   },
@@ -20,4 +21,3 @@
     "turbo": "^2.5.6"
   }
 }
-

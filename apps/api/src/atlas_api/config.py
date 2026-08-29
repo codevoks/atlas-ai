@@ -53,6 +53,15 @@ class Settings(BaseSettings):
     security_search_requests_per_window: int = 60
     security_answer_requests_per_window: int = 30
     security_research_requests_per_window: int = 10
+    telemetry_enabled: bool = True
+    telemetry_exporter: Literal["local", "none"] = "local"
+    telemetry_capture_content: bool = False
+    telemetry_buffer_size: int = 1_000
+    ops_internal_token: str | None = Field(default=None, repr=False)
+    ops_slo_api_p95_ms: int = 750
+    ops_slo_search_p95_ms: int = 1_500
+    ops_slo_answer_p95_ms: int = 3_000
+    ops_slo_research_resume_p95_ms: int = 3_000
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -119,6 +128,24 @@ class Settings(BaseSettings):
             raise ValueError("SECURITY_ANSWER_REQUESTS_PER_WINDOW must be positive")
         if self.security_research_requests_per_window < 1:
             raise ValueError("SECURITY_RESEARCH_REQUESTS_PER_WINDOW must be positive")
+        if self.telemetry_exporter != "local" and self.telemetry_capture_content:
+            raise ValueError(
+                "Telemetry content capture is allowed only for an explicit local exporter."
+            )
+        if self.telemetry_buffer_size < 100:
+            raise ValueError("TELEMETRY_BUFFER_SIZE must be at least 100")
+        if self.atlas_env == "production" and self.ops_internal_token is None:
+            raise ValueError("OPS_INTERNAL_TOKEN is required in production")
+        if self.ops_internal_token is not None and len(self.ops_internal_token) < 32:
+            raise ValueError("OPS_INTERNAL_TOKEN must contain at least 32 characters")
+        if self.ops_slo_api_p95_ms < 1:
+            raise ValueError("OPS_SLO_API_P95_MS must be positive")
+        if self.ops_slo_search_p95_ms < 1:
+            raise ValueError("OPS_SLO_SEARCH_P95_MS must be positive")
+        if self.ops_slo_answer_p95_ms < 1:
+            raise ValueError("OPS_SLO_ANSWER_P95_MS must be positive")
+        if self.ops_slo_research_resume_p95_ms < 1:
+            raise ValueError("OPS_SLO_RESEARCH_RESUME_P95_MS must be positive")
         return self
 
 
