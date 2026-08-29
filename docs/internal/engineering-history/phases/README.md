@@ -17,4 +17,4 @@ Implement exactly one approved phase at a time:
 
 Every file is a contract. If implementation evidence requires a change, update the phase file, `docs/decisions.md`, architecture/threat model as needed, and explain the tradeoff before proceeding. Never use a later phase to excuse a missing security or correctness invariant in the current phase.
 
-All phase documents are public engineering contracts. Keep them professional, implementation-grade, and free of private/personal workflow material.
+All phase documents are internal engineering-history contracts. Keep them professional, implementation-grade, and free of private/personal workflow material.
