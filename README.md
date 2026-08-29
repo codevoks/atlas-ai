@@ -1,74 +1,45 @@
 # Atlas AI
 
-Atlas AI is a production-grade enterprise knowledge and RAG SaaS built through explicit engineering phases. The repository currently contains the final Phase 11 baseline: monorepo tooling, web/API/worker service boundaries, authentication seams, workspace tenancy, RBAC, idempotent workspace creation, audit events, source/document metadata, signed local upload intents, durable ingestion jobs, deterministic parsing and chunking for supported text formats, deterministic local embeddings, PostgreSQL lexical retrieval, tenant-safe semantic and hybrid evidence retrieval, deterministic grounded answers with verified citations, versioned evaluation datasets, deterministic offline RAG evaluation runs, evidence-gated query expansion, bounded multi-query retrieval planning, bounded research runs with checkpoints, tool provenance, budget enforcement, human approval, cited reports, centralized security guardrails, security-event visibility, quota counters, content-trust/retention data-model foundations, local no-content telemetry, operations posture visibility, CI/container/IaC hardening artifacts, normalized derived artifacts, parser/chunker/embedding/retrieval/generation/evaluation/research/security/operations provenance, and generated OpenAPI-to-TypeScript contracts.
+Atlas AI is a local-first enterprise knowledge and retrieval platform for teams that need trustworthy answers from their own documents. It combines workspace tenancy, document ingestion, hybrid search, grounded answers with verified citations, evaluation tooling, bounded research workflows, security guardrails, and operational visibility in one production-style monorepo.
 
-## Current phase
+The default development path is intentionally zero-cost: it runs locally with Docker, PostgreSQL, deterministic development auth, filesystem-backed object storage, deterministic local AI providers, and no paid cloud or model API calls.
 
-Phase 11 — scale evidence, observability, deployment hardening, and operations.
+## What problem does it solve?
 
-Implemented:
+Enterprise knowledge systems often fail because users cannot tell where an answer came from, administrators cannot audit access and risk, and engineering teams cannot evaluate retrieval quality before shipping changes. Atlas AI addresses those problems by making evidence, tenancy, provenance, safety controls, and evaluation data first-class parts of the product.
 
-- pnpm + Turborepo monorepo
-- Next.js web/BFF in `apps/web`
-- Tailwind CSS styling pipeline for the web app
-- FastAPI control plane in `apps/api`
-- durable ingestion worker surface in `apps/worker`
-- PostgreSQL schema migrations for users, workspaces, memberships, audit events, idempotency records, sources, upload intents, documents, document versions, ingestion jobs, job events, chunks, embedding sets, and chunk embeddings
-- development auth for deterministic local testing
-- production OIDC/JWKS verifier boundary
-- workspace/member APIs and typed web screens
-- source, upload-intent, document, version, and ingestion-job APIs
-- HMAC-signed local upload URL flow with digest and size verification
-- lease/version-checked worker publication and upload-intent reconciliation endpoint
-- deterministic text/Markdown parsing with binary and unsupported-format rejection
-- canonical text normalization, derived normalized artifacts, and deterministic structure-aware chunks
-- deterministic local hash embeddings with provider/model/version/dimension provenance
-- tenant-safe semantic, lexical, and hybrid evidence search over ready active document versions
-- PostgreSQL full-text lexical index and deterministic RRF fusion with branch rank diagnostics
-- deterministic local grounded answer generation with verified source-span citations
-- persisted answer runs, answer evidence, citations, prompt/model/config provenance, token/latency/cost metadata, and no hosted provider calls
-- versioned evaluation datasets and immutable dataset versions with labeled cases
-- deterministic offline retrieval/answer evaluation runs using production retrieval and answer services
-- Recall@K, Precision@K, MRR, NDCG, answer coverage, citation coverage, and citation verification metrics with metric-version provenance
-- evaluation run persistence, aggregate metrics, slice metrics, failure summaries, run listing UI, and auditable baseline approval
-- allowlisted retrieval configurations, including the baseline RRF config and `phase8-multi-query-expansion-v1`
-- deterministic query expansion with strict query-variant and branch fan-out budgets
-- candidate aggregation with deduplication, optional diversity ordering, and transformed-query provenance
-- search/answer/evaluation APIs that can run baseline-versus-candidate ablations without paid providers
-- workspace UI controls for baseline versus Phase 8 retrieval configuration and visible retrieval-plan provenance
-- workspace-scoped bounded research runs with persisted steps, tool invocations, checkpoints, approvals, budgets, usage, evidence, terminal reasons, and cited final reports
-- deterministic local research graph with planner, Atlas retrieval tool, local policy-catalog tool, approval gate, and synthesis node
-- research APIs for idempotent create, list, get, resume, cancel, and approval decisions
-- workspace UI for starting research, inspecting run progress/tool provenance/checkpoints, approving synthesis, denying runs, and reading final reports
-- deterministic input/output guardrails for indirect prompt injection, secret-like content, SSRF-like content, and unsafe generated output
-- security-event persistence and admin-only security posture/event APIs
-- fixed-window quota counters for abuse and denial-of-wallet protection on search, answer, and research operations
-- egress policy, redactor, deterministic adversarial guardrail primitives, and security posture UI
-- PostgreSQL foundations for versioned security policy configs, content trust records, quota counters, security events, and retention tombstones
-- local no-content telemetry with request/trace IDs, route metrics, latency summaries, and content capture disabled by default
-- admin-only operations posture API/UI with SLO summary, dependency status, capacity envelope, cost posture, route metrics, and runbook summaries
-- internal operations metrics endpoint protected by `X-Atlas-Internal-Token`
-- production configuration guard requiring an internal operations token
-- Dockerfiles for API, worker, and web services
-- GitHub Actions CI workflow for local PostgreSQL, migrations, artifact validation, lint, typecheck, tests, and build
-- plan-only AWS/Terraform baseline with billable resource creation disabled and no default resource provisioning
-- local Phase 11 artifact validator for the zero-cost hardening path
-- version, chunk, and evidence API responses with safe parser/chunker/embedding provenance and counts
-- OpenAPI contract export and generated TypeScript types
+## Core capabilities
 
-Deferred:
+- Workspace-based tenancy with roles, membership management, and audit events.
+- Direct text/Markdown document upload with signed local upload URLs, digest checks, durable ingestion jobs, parsing, normalization, chunking, and deterministic embeddings.
+- Tenant-safe semantic, lexical, and hybrid evidence search backed by PostgreSQL.
+- Grounded question answering that cites only retrieved workspace evidence and validates citations after generation.
+- Versioned evaluation datasets and deterministic offline regression runs for retrieval, answer quality, and citation integrity.
+- Bounded research workflows with budgets, checkpoints, tool provenance, approval gates, and cited report synthesis.
+- Security guardrails for unsafe inputs, prompt-injection-like content, secret-like data, egress policy, quota enforcement, and admin-visible security events.
+- Operations posture views with local telemetry, route metrics, dependency status, SLO summaries, capacity/cost posture, runbook links, CI/container artifacts, and plan-only infrastructure documentation.
 
-- optional production S3-compatible storage, malware scanning, broad office/PDF/OCR parsing, pgvector ANN indexing, learned fusion, hosted reranking/generation, advanced citation analysis, hosted/LLM-judge evaluation, contextual chunk projections, external research tools, multi-agent runtime, enterprise DLP/KMS/HSM, external penetration testing, compliance certification, live production cloud provisioning, hosted observability, managed search/queues, billing, SAML/SCIM, and fine-grained document ACLs
+## Technology overview
 
-## Zero-cost local path
+- Monorepo: pnpm workspaces and Turborepo.
+- Web: Next.js App Router with Tailwind CSS.
+- API: FastAPI with generated OpenAPI contracts.
+- Worker: Python worker for durable ingestion and asynchronous processing.
+- Database: PostgreSQL as the transactional source of truth.
+- Object storage: local filesystem adapter for development, with production-grade adapter boundaries for S3-compatible storage.
+- Retrieval and AI: deterministic local embedding, retrieval, reranking, generation, evaluation, and research adapters for reproducible zero-cost tests and demos.
+- Infrastructure artifacts: Dockerfiles, Docker Compose for local PostgreSQL, GitHub Actions CI, and plan-only Terraform/AWS baseline with billable provisioning disabled by default.
 
-Atlas must remain buildable, testable, and demonstrable without paid SaaS, cloud resources, domains, or paid model APIs. The current Phase 11 path uses local Docker/PostgreSQL, deterministic development auth, a filesystem-backed object-store adapter, local API/web/worker services, deterministic parser/chunker/embedding behavior, PostgreSQL full-text search, exact semantic search over stored normalized vectors, RRF hybrid fusion, deterministic query expansion, bounded multi-query planning, deterministic local generation, verified citation validation, deterministic local evaluation metrics, deterministic local research tools, approval-gated report synthesis, deterministic security guardrails, local quota counters, redacted security events, local no-content telemetry, plan-only Terraform artifacts, container/CI validation, and no hosted model-provider or cloud calls.
+## Prerequisites
 
-Future cloud, managed observability, hosted search, and model-provider integrations are optional production adapters. They must be explicitly enabled and must not run or provision billable resources as part of the default setup, tests, or demo.
+- Node.js 22 or newer.
+- pnpm 10.x.
+- Python 3.12 or newer.
+- Docker Desktop or a compatible Docker runtime.
 
 ## Local setup
 
-Install dependencies:
+Install JavaScript and Python dependencies:
 
 ```bash
 pnpm install
@@ -76,7 +47,15 @@ python -m venv .venv
 .venv/bin/pip install -e "apps/api[dev]" -e "apps/worker"
 ```
 
-Start PostgreSQL:
+Create local environment configuration:
+
+```bash
+cp .env.example .env
+```
+
+For local development, replace the placeholder secrets in `.env` with any long random local-only values. These values are never suitable for production.
+
+Start PostgreSQL and apply migrations:
 
 ```bash
 docker compose up -d postgres
@@ -90,17 +69,7 @@ pnpm --filter @atlas/api openapi
 pnpm contracts
 ```
 
-Run validation:
-
-```bash
-pnpm lint
-pnpm typecheck
-pnpm build
-pnpm test
-pnpm ops:validate
-```
-
-Run services:
+Start the services in separate terminals:
 
 ```bash
 pnpm --filter @atlas/api dev
@@ -108,24 +77,53 @@ pnpm --filter @atlas/worker dev
 pnpm --filter @atlas/web dev
 ```
 
-The web app uses deterministic development sign-in locally. Production must use real OIDC/JWKS configuration; development auth is rejected in production settings.
+Open the web app at [http://localhost:3000](http://localhost:3000).
 
-## Engineering documentation
+## Local product walkthrough
 
-- `docs/architecture.md` — system architecture and component responsibilities
-- `docs/system-design-visuals.md` — architecture and state-machine diagrams
-- `docs/decisions.md` — cross-phase architecture decisions and evidence gates
-- `docs/threat-model.md` — security objectives, trust boundaries, and phase reviews
-- `docs/development-workflow.md` — phase workflow, validation, and repository hygiene
-- `docs/operations-hardening.md` — observability, SLO, CI/container, and no-apply infrastructure baseline
-- `docs/project-status.md` — concise phase progress tracker
-- `docs/phase-3-completion.md` — Phase 3 implementation and validation summary
-- `docs/phase-4-completion.md` — Phase 4 implementation and validation summary
-- `docs/phase-5-completion.md` — Phase 5 implementation and validation summary
-- `docs/phase-6-completion.md` — Phase 6 implementation and validation summary
-- `docs/phase-7-completion.md` — Phase 7 implementation and validation summary
-- `docs/phase-8-completion.md` — Phase 8 implementation and validation summary
-- `docs/phase-9-completion.md` — Phase 9 implementation and validation summary
-- `docs/phase-10-completion.md` — Phase 10 implementation and validation summary
-- `docs/phase-11-completion.md` — Phase 11 implementation and validation summary
-- `docs/phases/` — implementation contracts for each phase
+1. Sign in with the deterministic local development flow.
+2. Create or open a workspace.
+3. Create a source for manual uploads.
+4. Upload a UTF-8 `.txt`, `.md`, or `.markdown` document.
+5. Let the worker ingest, parse, chunk, and embed the document.
+6. Search workspace evidence with semantic, lexical, or hybrid retrieval.
+7. Ask a grounded question and inspect the verified citations.
+8. Review evaluation, research, security, and operations panels when available for your workspace role.
+
+The local demo path uses deterministic providers and does not require hosted AI APIs, managed search, paid observability, cloud storage, a domain, or any billable cloud resource.
+
+## Validation
+
+Run the main repository checks:
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm ops:validate
+```
+
+The CI workflow runs local PostgreSQL, migrations, contract generation, artifact validation, linting, type checking, tests, and build checks without provisioning paid infrastructure.
+
+## Configuration notes
+
+- Development auth is allowed only for local development. Production settings reject development auth and require real OIDC/JWKS configuration.
+- Optional cloud, managed observability, hosted search, external research tools, and model-provider integrations are adapter-compatible extension points, but they are disabled by default and require explicit operator configuration.
+- Logs and telemetry are designed to avoid raw content capture by default.
+- Never commit `.env`, private documents, secrets, raw sensitive provider payloads, or production traces.
+
+## Documentation
+
+Primary engineering references:
+
+- `docs/architecture.md` — system architecture and component responsibilities.
+- `docs/data-model.md` — persistent entities and invariants.
+- `docs/threat-model.md` — security objectives, trust boundaries, risks, and controls.
+- `docs/failure-model.md` — failure modes, retry ownership, and recovery behavior.
+- `docs/capacity-model.md` — capacity assumptions and scaling boundaries.
+- `docs/decisions.md` — architecture decision ledger and evidence gates.
+- `docs/system-design-visuals.md` — current architecture, trust-boundary, data-flow, and reliability diagrams.
+- `docs/operations-hardening.md` — observability, CI/container, runbook, and no-apply infrastructure guidance.
+
+Historical engineering records are preserved under `docs/internal/`.

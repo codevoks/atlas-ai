@@ -171,4 +171,4 @@ Dominant production cost drivers are model tokens, embeddings/re-embeddings, rer
 
 ## Evolution rule
 
-PostgreSQL/pgvector, Redis, S3-compatible storage, and provider adapters are starting decisions, not permanent dogma. Architecture changes require evidence, an ADR entry, migration/rollback design, evaluation comparison, and an explanation the owner can defend. See `docs/decisions.md`, `docs/threat-model.md`, and `docs/roadmap.md`.
+PostgreSQL/pgvector, Redis, S3-compatible storage, and provider adapters are starting decisions, not permanent dogma. Architecture changes require evidence, an ADR entry, migration/rollback design, evaluation comparison, and an explanation the owner can defend. See `docs/decisions.md`, `docs/threat-model.md`, and the preserved engineering history under `docs/internal/engineering-history/`.

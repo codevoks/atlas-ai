@@ -17,22 +17,23 @@ export default function HomePage() {
       <section className="hero shell">
         <div>
           <p className="eyebrow">Enterprise knowledge, with evidence</p>
-          <h1>Tenant-safe knowledge storage before retrieval begins.</h1>
+          <h1>Trustworthy answers from tenant-safe enterprise knowledge.</h1>
           <p className="lede">
-            Phase 2 establishes secure workspaces, source metadata, signed uploads, durable
-            ingestion jobs, and metadata-only publication before parsing and retrieval are added.
+            Upload team documents, search grounded evidence, ask citation-backed questions,
+            run bounded research, and inspect security and operations posture from one local-first
+            workspace experience.
           </p>
           <div className="hero-actions">
             <Link className="button" href="/sign-in">
               Open workspace
             </Link>
             <a className="text-link" href="http://localhost:8000/docs">
-              Explore Phase 2 API
+              Explore API docs
             </a>
           </div>
         </div>
-        <div className="architecture-card" aria-label="Phase 2 architecture summary">
-          <p className="card-label">Phase 2 pipeline</p>
+        <div className="architecture-card" aria-label="Atlas AI product flow">
+          <p className="card-label">Atlas workflow</p>
           <ol className="flow-list">
             <li><span>01</span> Identity verified at the API boundary</li>
             <li><span>02</span> Workspace RBAC resolves source and document access</li>

@@ -2,7 +2,7 @@
 
 ## Scope and deliverables
 
-Produce and review the complete pre-implementation design: `docs/architecture.md`, `docs/decisions.md`, `docs/threat-model.md`, `docs/roadmap.md`, all later phase contracts, and this repository guidance. No application scaffold, runtime dependency, database, infrastructure, or production code belongs in Phase 0.
+Produce and review the complete pre-implementation design: `docs/architecture.md`, `docs/decisions.md`, `docs/threat-model.md`, `docs/internal/engineering-history/roadmap.md`, all later phase contracts, and this repository guidance. No application scaffold, runtime dependency, database, infrastructure, or production code belongs in Phase 0.
 
 Product assumptions to validate later: Atlas begins as a workspace-scoped SaaS; users upload supported documents; workspace members search and ask grounded questions; admins manage sources/members; ingestion and research are asynchronous where work exceeds request latency; initial visibility is workspace-wide with role-gated administration; a zero-cost local path is mandatory; external model/cloud/provider integrations are optional and opt-in before production requirements say otherwise.
 

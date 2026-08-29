@@ -179,17 +179,17 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
             </div>
             <div className="result-card">
               <div className="result-card-header">
-                <strong>{securityPosture.guardrail_version}</strong>
+                <strong>Active protection policy</strong>
                 <span>{securityPosture.zero_cost ? "$0.00 local path" : "external cost enabled"}</span>
               </div>
               <div className="metric-grid">
                 <div><span>Paid services</span><strong>{securityPosture.paid_services_enabled ? "enabled" : "disabled"}</strong></div>
-                <div><span>Policy</span><strong>{securityPosture.policy_config_version}</strong></div>
+                <div><span>Policy</span><strong>{displayPolicyName(securityPosture.policy_config_version)}</strong></div>
                 <div><span>Fail-closed</span><strong>{securityPosture.fail_closed_controls.length}</strong></div>
                 <div><span>Deterministic</span><strong>{securityPosture.deterministic_controls.length}</strong></div>
               </div>
               <p className="muted">
-                Controls: {securityPosture.deterministic_controls.slice(0, 6).join(", ")}
+                Controls: {securityPosture.deterministic_controls.slice(0, 6).map(displayControlName).join(", ")}
               </p>
             </div>
             <div className="results-list">
@@ -200,7 +200,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
                       <strong>{event.event_type}</strong>
                       <span>{event.outcome} · {event.severity}</span>
                     </div>
-                    <p className="muted mono">{event.control_version} · request {event.request_id}</p>
+                    <p className="muted mono">control {displayControlName(event.control_version)} · request {event.request_id}</p>
                     <p className="muted">{formatFindings(event.safe_metadata)}</p>
                   </article>
                 ))
@@ -222,7 +222,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
             </div>
             <div className="result-card">
               <div className="result-card-header">
-                <strong>{operationsPosture.posture_version}</strong>
+                <strong>Operational readiness</strong>
                 <span>{operationsPosture.zero_cost ? "$0.00 local validation" : "external cost enabled"}</span>
               </div>
               <div className="metric-grid">
@@ -236,7 +236,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
                 {String(operationsPosture.dependency_status.database ?? "unknown")}
               </p>
               <p className="muted">
-                Capacity path: {String(operationsPosture.capacity_envelope.search_projection ?? "unknown")}
+                Search backend: {displaySearchProjection(operationsPosture.capacity_envelope.search_projection)}
               </p>
             </div>
             <div className="results-list">
@@ -272,7 +272,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
               name="purpose"
               minLength={2}
               maxLength={160}
-              defaultValue="Phase 9 research demo"
+              defaultValue="Access policy review"
               placeholder="Research purpose"
               required
             />
@@ -328,11 +328,11 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
             <select
               id="answer-config"
               name="answerConfig"
-              defaultValue={selectedRetrievalConfig(answerConfig)}
+              defaultValue={selectedRetrievalOption(answerConfig)}
             >
-              <option value="phase5-postgres-fts-rrf-v1">Baseline RRF</option>
-              <option value="phase8-multi-query-expansion-v1">
-                Phase 8 multi-query expansion
+              <option value="balanced">Balanced retrieval</option>
+              <option value="expanded">
+                Expanded retrieval
               </option>
             </select>
             <button className="button primary" type="submit">Generate answer</button>
@@ -354,8 +354,9 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
                 </div>
                 <p>{answerResult.answer_text}</p>
                 <small className="mono">
-                  run {answerResult.id} · config {answerResult.retrieval_config_version} · prompt{" "}
-                  {answerResult.prompt_version}
+                  run {answerResult.id} · retrieval{" "}
+                  {displayRetrievalConfig(answerResult.retrieval_config_version)} · prompt{" "}
+                  {displayPromptVersion(answerResult.prompt_version)}
                 </small>
               </article>
               {answerResult.citations.map((citation) => (
@@ -436,7 +437,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
             </div>
           ) : (
             <p className="muted">
-              No evaluation runs yet. Create a versioned dataset and launch a local deterministic run from the API.
+              No evaluation runs yet. Use the evaluation API to run regression checks against approved datasets.
             </p>
           )}
         </section>
@@ -468,11 +469,11 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
             <select
               id="search-config"
               name="searchConfig"
-              defaultValue={selectedRetrievalConfig(searchConfig)}
+              defaultValue={selectedRetrievalOption(searchConfig)}
             >
-              <option value="phase5-postgres-fts-rrf-v1">Baseline RRF</option>
-              <option value="phase8-multi-query-expansion-v1">
-                Phase 8 multi-query expansion
+              <option value="balanced">Balanced retrieval</option>
+              <option value="expanded">
+                Expanded retrieval
               </option>
             </select>
             <button className="button primary" type="submit">Search evidence</button>
@@ -480,14 +481,14 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
           {semanticResults ? (
             <div className="search-results">
               <p className="muted">
-                {semanticResults.mode} retrieval · {semanticResults.retrieval_config_version} · trace{" "}
+                {semanticResults.mode} retrieval · {displayRetrievalConfig(semanticResults.retrieval_config_version)} · trace{" "}
                 {semanticResults.trace_id}
               </p>
               {semanticResults.debug?.retrieval_plan ? (
                 <article className="search-result">
                   <div>
                     <strong>Retrieval plan</strong>
-                    <small>{String(semanticResults.retrieval_config_version)}</small>
+                    <small>{displayRetrievalConfig(semanticResults.retrieval_config_version)}</small>
                   </div>
                   <small className="mono">
                     {retrievalPlanSummary(semanticResults.debug.retrieval_plan)}
@@ -509,7 +510,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
                     {item.lexical_rank ?? "—"} · RRF {item.rrf_score?.toFixed(3) ?? "—"}
                   </small>
                   <small className="mono">
-                    variants {matchedVariants(item.retrieval_provenance).join(" | ") || "baseline"}
+                    variants {matchedVariants(item.retrieval_provenance).join(" | ") || "original query"}
                   </small>
                   <small className="mono">
                     {item.embedding_model
@@ -697,7 +698,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
           {canAdminister ? (
             <aside className="side-panel">
               <p className="eyebrow">Grant access</p><h2>Add an existing user</h2>
-              <p className="muted">For Phase 1, a user must sign in once before an administrator can add them.</p>
+              <p className="muted">A user must sign in once before an administrator can add them.</p>
               <form action={addMemberAction} className="stack-form">
                 <input name="workspaceId" type="hidden" value={workspace.id} />
                 <label htmlFor="member-email">Email</label><input id="member-email" name="email" type="email" placeholder="bob@atlas.local" required />
@@ -742,8 +743,8 @@ function ResearchRunCard({ run, workspaceId }: { run: ResearchRun; workspaceId: 
         </span>
       </div>
       <small className="mono">
-        run {run.id} · config {run.config_version} · graph {run.graph_version} · version{" "}
-        {run.version}
+        run {run.id} · workflow {displayResearchConfig(run.config_version)} · engine{" "}
+        {displayResearchConfig(run.graph_version)} · version {run.version}
       </small>
       {latestCheckpoint ? (
         <small className="mono">
@@ -817,9 +818,50 @@ function formatMetric(value: number | null): string {
 }
 
 function selectedRetrievalConfig(value: string | undefined): RetrievalConfigVersion {
-  return value === "phase8-multi-query-expansion-v1"
+  return value === "expanded" || value === "phase8-multi-query-expansion-v1"
     ? "phase8-multi-query-expansion-v1"
     : "phase5-postgres-fts-rrf-v1";
+}
+
+function selectedRetrievalOption(value: string | undefined): "balanced" | "expanded" {
+  return value === "expanded" || value === "phase8-multi-query-expansion-v1"
+    ? "expanded"
+    : "balanced";
+}
+
+function displayRetrievalConfig(value: string): string {
+  if (value === "phase8-multi-query-expansion-v1") return "Expanded retrieval";
+  if (value === "phase5-postgres-fts-rrf-v1") return "Balanced retrieval";
+  return "Custom retrieval";
+}
+
+function displayPromptVersion(value: string): string {
+  if (value === "phase6-grounded-answer-v1") return "Grounded answer";
+  return "Custom prompt";
+}
+
+function displayPolicyName(value: string): string {
+  if (value === "phase10-default-policy-v1") return "Default workspace policy";
+  return "Custom workspace policy";
+}
+
+function displayControlName(value: string): string {
+  return value
+    .replace(/^phase\d+-/i, "")
+    .replace(/-v\d+$/i, "")
+    .replaceAll("_", " ")
+    .replaceAll("-", " ");
+}
+
+function displaySearchProjection(value: unknown): string {
+  if (value === "postgresql_authoritative_no_opensearch_trigger") return "PostgreSQL authoritative search";
+  return typeof value === "string" && value ? value.replaceAll("_", " ") : "unknown";
+}
+
+function displayResearchConfig(value: string): string {
+  if (value === "phase9-bounded-research-v1") return "Bounded research";
+  if (value === "phase9-deterministic-local-graph-v1") return "Deterministic local graph";
+  return "Custom research workflow";
 }
 
 function retrievalPlanSummary(plan: unknown): string {

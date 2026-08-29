@@ -17,7 +17,7 @@
 | 10 | Consolidated AI/security guardrails and adversarial assurance | Threat coverage and red-team regression suite |
 | 11 | Scale-engine comparison, observability, AWS/Terraform, CI/CD, load/recovery hardening | Production readiness and benchmark report |
 
-Each phase specification contains the mandatory scope, engineering concepts, architecture/data/API/interface changes, security requirements, failure scenarios, testing strategy, acceptance criteria, system-design expectations, and explicit deferrals. The `docs/phases/` files are implementation contracts; changes require an entry in `docs/decisions.md`.
+Each phase specification contains the mandatory scope, engineering concepts, architecture/data/API/interface changes, security requirements, failure scenarios, testing strategy, acceptance criteria, system-design expectations, and explicit deferrals. The `docs/internal/engineering-history/phases/` files are implementation contracts; changes require an entry in `docs/decisions.md`.
 
 ## Phase gate protocol
 

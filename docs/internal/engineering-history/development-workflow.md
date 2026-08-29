@@ -1,6 +1,6 @@
 # Development workflow
 
-Atlas AI is implemented through explicit engineering phases. The phase specifications in `docs/phases/` are the implementation contracts; architecture changes require updates to the relevant design documents and the decision ledger.
+Atlas AI implementation history is preserved through internal engineering milestones. The implementation contracts in `docs/internal/engineering-history/phases/` remain the historical scope records; architecture changes require updates to the relevant design documents and the decision ledger.
 
 ## Phase discipline
 

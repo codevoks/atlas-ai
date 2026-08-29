@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/ops/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Internal Ops Metrics */
+        get: operations["internal_ops_metrics_internal_ops_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me": {
         parameters: {
             query?: never;
@@ -117,6 +134,23 @@ export interface paths {
         };
         /** List Security Events */
         get: operations["list_security_events_v1_workspaces__workspace_id__security_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workspaces/{workspace_id}/operations/posture": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Operations Posture */
+        get: operations["operations_posture_v1_workspaces__workspace_id__operations_posture_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1480,6 +1514,47 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** OperationsPostureResponse */
+        OperationsPostureResponse: {
+            /** Posture Version */
+            posture_version: string;
+            /** Telemetry Schema Version */
+            telemetry_schema_version: string;
+            /** Zero Cost */
+            zero_cost: boolean;
+            /** Paid Services Enabled */
+            paid_services_enabled: boolean;
+            /** Telemetry Exporter */
+            telemetry_exporter: string;
+            /** Telemetry Content Capture Enabled */
+            telemetry_content_capture_enabled: boolean;
+            /** Retained Trace Count */
+            retained_trace_count: number;
+            /** Dropped Trace Count */
+            dropped_trace_count: number;
+            /** Dependency Status */
+            dependency_status: {
+                [key: string]: unknown;
+            };
+            /** Slo Summary */
+            slo_summary: {
+                [key: string]: unknown;
+            };
+            /** Capacity Envelope */
+            capacity_envelope: {
+                [key: string]: unknown;
+            };
+            /** Cost Summary */
+            cost_summary: {
+                [key: string]: unknown;
+            };
+            /** Runbooks */
+            runbooks: {
+                [key: string]: unknown;
+            }[];
+            /** Routes */
+            routes: components["schemas"]["RouteMetricResponse"][];
+        };
         /** ResearchApprovalDecision */
         ResearchApprovalDecision: {
             /** Version */
@@ -1644,6 +1719,21 @@ export interface components {
          * @enum {string}
          */
         Role: "owner" | "admin" | "member" | "viewer";
+        /** RouteMetricResponse */
+        RouteMetricResponse: {
+            /** Route */
+            route: string;
+            /** Method */
+            method: string;
+            /** Count */
+            count: number;
+            /** Error Count */
+            error_count: number;
+            /** P95 Ms */
+            p95_ms: number;
+            /** Max Ms */
+            max_ms: number;
+        };
         /** SearchRequest */
         SearchRequest: {
             /** Query */
@@ -2021,6 +2111,37 @@ export interface operations {
             };
         };
     };
+    internal_ops_metrics_internal_ops_metrics_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Atlas-Internal-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationsPostureResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     me_v1_me_get: {
         parameters: {
             query?: never;
@@ -2213,6 +2334,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SecurityEventListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    operations_posture_v1_workspaces__workspace_id__operations_posture_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationsPostureResponse"];
                 };
             };
             /** @description Validation Error */

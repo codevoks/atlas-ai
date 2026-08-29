@@ -75,6 +75,7 @@ async def test_internal_metrics_endpoint_requires_explicit_token(
 def test_production_requires_internal_operations_token() -> None:
     with pytest.raises(PydanticValidationError):
         Settings(
+            _env_file=None,
             atlas_env="production",
             auth_mode="oidc",
             auth_jwks_url="https://issuer.example/.well-known/jwks.json",
