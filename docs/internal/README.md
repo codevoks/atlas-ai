@@ -6,6 +6,7 @@ This directory preserves engineering history and implementation records that are
 
 - `engineering-history/project-status.md` — implementation progress tracker and publication record.
 - `engineering-history/phase-history-audit.md` — reconciled phase completion, commit, and tag audit.
+- `engineering-history/final-production-readiness-audit.md` — final end-to-end production-readiness audit after the planned implementation phases.
 - `engineering-history/roadmap.md` — historical implementation blueprint and sequencing contract.
 - `engineering-history/requirements-traceability.md` — requirements-to-implementation traceability.
 - `engineering-history/development-workflow.md` — milestone-oriented validation and release workflow used during implementation.

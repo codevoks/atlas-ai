@@ -33,12 +33,14 @@ import {
   getSources,
   getWorkspace,
   searchEvidence,
+  type AnswerResult,
   type RetrievalConfigVersion,
   type OperationsPosture,
   type ResearchRun,
   type SecurityEvent,
   type SecurityPosture,
   type SearchMode,
+  type SearchResult,
 } from "@/lib/api";
 
 interface WorkspacePageProps {
@@ -52,6 +54,13 @@ interface WorkspacePageProps {
     semanticQuery?: string;
     searchMode?: string;
   }>;
+}
+
+function safeRequestMessage(error: unknown): string {
+  if (error instanceof AtlasApiError) {
+    return `${error.message}${error.requestId ? ` Request ID: ${error.requestId}` : ""}`;
+  }
+  return "The request could not be completed.";
 }
 
 export default async function WorkspacePage({ params, searchParams }: WorkspacePageProps) {
@@ -68,6 +77,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
   let securityPosture: SecurityPosture | null = null;
   let securityEvents: SecurityEvent[] = [];
   let operationsPosture: OperationsPosture | null = null;
+  let pageError = error ?? "";
   try {
     [me, workspace, members, sources, documents, evaluationRuns, researchRuns] = await Promise.all([
       getMe(),
@@ -124,27 +134,37 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
     searchMode === "semantic" || searchMode === "lexical" || searchMode === "hybrid"
       ? searchMode
       : "hybrid";
-  const semanticResults = cleanSemanticQuery
-    ? await searchEvidence(
+  let semanticResults: SearchResult | null = null;
+  if (cleanSemanticQuery) {
+    try {
+      semanticResults = await searchEvidence(
         workspaceId,
         cleanSemanticQuery,
         selectedSearchMode,
         selectedRetrievalConfig(searchConfig),
-      )
-    : null;
+      );
+    } catch (requestError) {
+      pageError = safeRequestMessage(requestError);
+    }
+  }
   const cleanAnswerQuery = answerQuery ? answerQuery.split(/\s+/).join(" ").slice(0, 4000) : "";
   const selectedAnswerMode: SearchMode =
     answerMode === "semantic" || answerMode === "lexical" || answerMode === "hybrid"
       ? answerMode
       : "hybrid";
-  const answerResult = cleanAnswerQuery
-    ? await answerQuestion(
+  let answerResult: AnswerResult | null = null;
+  if (cleanAnswerQuery) {
+    try {
+      answerResult = await answerQuestion(
         workspaceId,
         cleanAnswerQuery,
         selectedAnswerMode,
         selectedRetrievalConfig(answerConfig),
-      )
-    : null;
+      );
+    } catch (requestError) {
+      pageError = safeRequestMessage(requestError);
+    }
+  }
 
   return (
     <main className="app-shell">
@@ -166,7 +186,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
             </form>
           ) : null}
         </div>
-        {error ? <p className="alert" role="alert">{error}</p> : null}
+        {pageError ? <p className="alert" role="alert">{pageError}</p> : null}
 
         {securityPosture ? (
           <section className="search-panel">
