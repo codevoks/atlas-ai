@@ -13,31 +13,36 @@ export default function SignInPage() {
   }
   return (
     <main className="centered-page">
-      <section className="auth-panel">
+      <section className="panel auth-panel">
         <Link className="brand" href="/">
           <span className="brand-mark">A</span>
-          Atlas AI
+          Atlas
         </Link>
         <div>
           <p className="eyebrow">Development authentication</p>
-          <h1>Choose a local identity</h1>
-          <p className="muted">
-            These signed sessions are available only in development. Production uses the configured
-            OIDC identity provider.
+          <h1 className="display-2">Choose a local identity</h1>
+          <p className="muted" style={{ marginTop: 12, fontSize: "0.875rem", lineHeight: 1.6 }}>
+            These signed sessions are available only in development. Production uses the
+            configured OIDC identity provider.
           </p>
         </div>
         <form action="/api/dev/session" method="post" className="identity-options">
           <button className="identity-card" name="identity" value="alice" type="submit">
             <span className="avatar">AO</span>
-            <span><strong>Alice Owner</strong><small>alice@atlas.local</small></span>
+            <span>
+              <strong>Alice Owner</strong>
+              <small>alice@atlas.local</small>
+            </span>
           </button>
           <button className="identity-card" name="identity" value="bob" type="submit">
             <span className="avatar alt">BM</span>
-            <span><strong>Bob Member</strong><small>bob@atlas.local</small></span>
+            <span>
+              <strong>Bob Member</strong>
+              <small>bob@atlas.local</small>
+            </span>
           </button>
         </form>
       </section>
     </main>
   );
 }
-

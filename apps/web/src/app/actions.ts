@@ -25,6 +25,13 @@ function messageFor(error: unknown): string {
   return "The request could not be completed.";
 }
 
+/** Forms may include a hidden `redirectTo` field so a mutation returns the
+ * user to the section route it was submitted from, instead of a fixed path. */
+function destinationFrom(formData: FormData, fallback: string): string {
+  const redirectTo = formData.get("redirectTo");
+  return typeof redirectTo === "string" && redirectTo.startsWith("/") ? redirectTo : fallback;
+}
+
 export async function createWorkspaceAction(formData: FormData): Promise<void> {
   let destination = "/dashboard";
   try {
@@ -44,7 +51,7 @@ export async function createWorkspaceAction(formData: FormData): Promise<void> {
 
 export async function renameWorkspaceAction(formData: FormData): Promise<void> {
   const workspaceId = String(formData.get("workspaceId") ?? "");
-  let destination = `/workspaces/${workspaceId}`;
+  let destination = destinationFrom(formData, `/workspaces/${workspaceId}`);
   try {
     await apiRequest<Workspace>(`/v1/workspaces/${workspaceId}`, {
       method: "PATCH",
@@ -53,7 +60,7 @@ export async function renameWorkspaceAction(formData: FormData): Promise<void> {
         version: Number(formData.get("version")),
       }),
     });
-    revalidatePath(`/workspaces/${workspaceId}`);
+    revalidatePath(`/workspaces/${workspaceId}`, "layout");
     revalidatePath("/dashboard");
   } catch (error) {
     destination += `?error=${encodeURIComponent(messageFor(error))}`;
@@ -63,7 +70,7 @@ export async function renameWorkspaceAction(formData: FormData): Promise<void> {
 
 export async function addMemberAction(formData: FormData): Promise<void> {
   const workspaceId = String(formData.get("workspaceId") ?? "");
-  let destination = `/workspaces/${workspaceId}`;
+  let destination = destinationFrom(formData, `/workspaces/${workspaceId}`);
   try {
     await apiRequest<Member>(`/v1/workspaces/${workspaceId}/members`, {
       method: "POST",
@@ -72,7 +79,7 @@ export async function addMemberAction(formData: FormData): Promise<void> {
         role: String(formData.get("role") ?? "member"),
       }),
     });
-    revalidatePath(`/workspaces/${workspaceId}`);
+    revalidatePath(`/workspaces/${workspaceId}`, "layout");
   } catch (error) {
     destination += `?error=${encodeURIComponent(messageFor(error))}`;
   }
@@ -82,7 +89,7 @@ export async function addMemberAction(formData: FormData): Promise<void> {
 export async function updateMemberAction(formData: FormData): Promise<void> {
   const workspaceId = String(formData.get("workspaceId") ?? "");
   const userId = String(formData.get("userId") ?? "");
-  let destination = `/workspaces/${workspaceId}`;
+  let destination = destinationFrom(formData, `/workspaces/${workspaceId}`);
   try {
     await apiRequest<Member>(`/v1/workspaces/${workspaceId}/members/${userId}`, {
       method: "PATCH",
@@ -91,7 +98,7 @@ export async function updateMemberAction(formData: FormData): Promise<void> {
         version: Number(formData.get("version")),
       }),
     });
-    revalidatePath(`/workspaces/${workspaceId}`);
+    revalidatePath(`/workspaces/${workspaceId}`, "layout");
   } catch (error) {
     destination += `?error=${encodeURIComponent(messageFor(error))}`;
   }
@@ -101,12 +108,12 @@ export async function updateMemberAction(formData: FormData): Promise<void> {
 export async function removeMemberAction(formData: FormData): Promise<void> {
   const workspaceId = String(formData.get("workspaceId") ?? "");
   const userId = String(formData.get("userId") ?? "");
-  let destination = `/workspaces/${workspaceId}`;
+  let destination = destinationFrom(formData, `/workspaces/${workspaceId}`);
   try {
     await apiRequest<void>(`/v1/workspaces/${workspaceId}/members/${userId}`, {
       method: "DELETE",
     });
-    revalidatePath(`/workspaces/${workspaceId}`);
+    revalidatePath(`/workspaces/${workspaceId}`, "layout");
   } catch (error) {
     destination += `?error=${encodeURIComponent(messageFor(error))}`;
   }
@@ -115,13 +122,13 @@ export async function removeMemberAction(formData: FormData): Promise<void> {
 
 export async function createSourceAction(formData: FormData): Promise<void> {
   const workspaceId = String(formData.get("workspaceId") ?? "");
-  let destination = `/workspaces/${workspaceId}`;
+  let destination = destinationFrom(formData, `/workspaces/${workspaceId}`);
   try {
     await apiRequest<Source>(`/v1/workspaces/${workspaceId}/sources`, {
       method: "POST",
       body: JSON.stringify({ name: String(formData.get("name") ?? "") }),
     });
-    revalidatePath(`/workspaces/${workspaceId}`);
+    revalidatePath(`/workspaces/${workspaceId}`, "layout");
   } catch (error) {
     destination += `?error=${encodeURIComponent(messageFor(error))}`;
   }
@@ -130,7 +137,7 @@ export async function createSourceAction(formData: FormData): Promise<void> {
 
 export async function uploadDocumentAction(formData: FormData): Promise<void> {
   const workspaceId = String(formData.get("workspaceId") ?? "");
-  let destination = `/workspaces/${workspaceId}`;
+  let destination = destinationFrom(formData, `/workspaces/${workspaceId}`);
   try {
     const file = formData.get("file");
     if (!(file instanceof File) || file.size === 0) {
@@ -170,7 +177,7 @@ export async function uploadDocumentAction(formData: FormData): Promise<void> {
         }),
       },
     );
-    revalidatePath(`/workspaces/${workspaceId}`);
+    revalidatePath(`/workspaces/${workspaceId}`, "layout");
   } catch (error) {
     destination += `?error=${encodeURIComponent(messageFor(error))}`;
   }
@@ -180,12 +187,12 @@ export async function uploadDocumentAction(formData: FormData): Promise<void> {
 export async function cancelIngestionJobAction(formData: FormData): Promise<void> {
   const workspaceId = String(formData.get("workspaceId") ?? "");
   const jobId = String(formData.get("jobId") ?? "");
-  let destination = `/workspaces/${workspaceId}`;
+  let destination = destinationFrom(formData, `/workspaces/${workspaceId}`);
   try {
     await apiRequest(`/v1/workspaces/${workspaceId}/ingestion-jobs/${jobId}/cancel`, {
       method: "POST",
     });
-    revalidatePath(`/workspaces/${workspaceId}`);
+    revalidatePath(`/workspaces/${workspaceId}`, "layout");
   } catch (error) {
     destination += `?error=${encodeURIComponent(messageFor(error))}`;
   }
@@ -195,12 +202,12 @@ export async function cancelIngestionJobAction(formData: FormData): Promise<void
 export async function retryIngestionJobAction(formData: FormData): Promise<void> {
   const workspaceId = String(formData.get("workspaceId") ?? "");
   const jobId = String(formData.get("jobId") ?? "");
-  let destination = `/workspaces/${workspaceId}`;
+  let destination = destinationFrom(formData, `/workspaces/${workspaceId}`);
   try {
     await apiRequest(`/v1/workspaces/${workspaceId}/ingestion-jobs/${jobId}/retry`, {
       method: "POST",
     });
-    revalidatePath(`/workspaces/${workspaceId}`);
+    revalidatePath(`/workspaces/${workspaceId}`, "layout");
   } catch (error) {
     destination += `?error=${encodeURIComponent(messageFor(error))}`;
   }
@@ -210,12 +217,12 @@ export async function retryIngestionJobAction(formData: FormData): Promise<void>
 export async function deleteDocumentAction(formData: FormData): Promise<void> {
   const workspaceId = String(formData.get("workspaceId") ?? "");
   const documentId = String(formData.get("documentId") ?? "");
-  let destination = `/workspaces/${workspaceId}`;
+  let destination = destinationFrom(formData, `/workspaces/${workspaceId}`);
   try {
     await apiRequest<void>(`/v1/workspaces/${workspaceId}/documents/${documentId}`, {
       method: "DELETE",
     });
-    revalidatePath(`/workspaces/${workspaceId}`);
+    revalidatePath(`/workspaces/${workspaceId}`, "layout");
   } catch (error) {
     destination += `?error=${encodeURIComponent(messageFor(error))}`;
   }
@@ -224,7 +231,7 @@ export async function deleteDocumentAction(formData: FormData): Promise<void> {
 
 export async function createResearchRunAction(formData: FormData): Promise<void> {
   const workspaceId = String(formData.get("workspaceId") ?? "");
-  let destination = `/workspaces/${workspaceId}`;
+  let destination = destinationFrom(formData, `/workspaces/${workspaceId}`);
   try {
     await apiRequest<ResearchRun>(`/v1/workspaces/${workspaceId}/research-runs`, {
       method: "POST",
@@ -234,7 +241,7 @@ export async function createResearchRunAction(formData: FormData): Promise<void>
         question: String(formData.get("question") ?? ""),
       }),
     });
-    revalidatePath(`/workspaces/${workspaceId}`);
+    revalidatePath(`/workspaces/${workspaceId}`, "layout");
   } catch (error) {
     destination += `?error=${encodeURIComponent(messageFor(error))}`;
   }
@@ -245,7 +252,7 @@ export async function decideResearchApprovalAction(formData: FormData): Promise<
   const workspaceId = String(formData.get("workspaceId") ?? "");
   const runId = String(formData.get("runId") ?? "");
   const approvalId = String(formData.get("approvalId") ?? "");
-  let destination = `/workspaces/${workspaceId}`;
+  let destination = destinationFrom(formData, `/workspaces/${workspaceId}`);
   try {
     await apiRequest<ResearchRun>(
       `/v1/workspaces/${workspaceId}/research-runs/${runId}/approvals/${approvalId}`,
@@ -257,7 +264,7 @@ export async function decideResearchApprovalAction(formData: FormData): Promise<
         }),
       },
     );
-    revalidatePath(`/workspaces/${workspaceId}`);
+    revalidatePath(`/workspaces/${workspaceId}`, "layout");
   } catch (error) {
     destination += `?error=${encodeURIComponent(messageFor(error))}`;
   }

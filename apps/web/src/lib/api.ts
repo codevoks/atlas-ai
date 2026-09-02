@@ -1,5 +1,7 @@
 import "server-only";
 
+import { cache } from "react";
+
 import type { components } from "@atlas/shared-types";
 
 import { AtlasApiError } from "@/lib/api-error";
@@ -321,18 +323,40 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   return (await response.json()) as T;
 }
 
-export async function getMe(): Promise<Me> {
+export const getMe = cache(async (): Promise<Me> => {
   return apiRequest<Me>("/v1/me");
-}
+});
 
 export async function getWorkspaces(): Promise<Workspace[]> {
   const payload = await apiRequest<{ items: Workspace[] }>("/v1/workspaces");
   return payload.items;
 }
 
-export async function getWorkspace(workspaceId: string): Promise<Workspace> {
+export const getWorkspace = cache(async (workspaceId: string): Promise<Workspace> => {
   return apiRequest<Workspace>(`/v1/workspaces/${workspaceId}`);
+});
+
+export interface WorkspaceContext {
+  me: Me;
+  workspace: Workspace;
+  canAdminister: boolean;
+  canUpload: boolean;
 }
+
+/**
+ * Shared per-request identity + workspace membership resolution used by the
+ * workspace shell layout and every section page. React's `cache()` on
+ * `getMe`/`getWorkspace` above collapses these into one API call each per
+ * request even though multiple server components call this helper.
+ */
+export const loadWorkspaceContext = cache(
+  async (workspaceId: string): Promise<WorkspaceContext> => {
+    const [me, workspace] = await Promise.all([getMe(), getWorkspace(workspaceId)]);
+    const canAdminister = workspace.role === "owner" || workspace.role === "admin";
+    const canUpload = canAdminister || workspace.role === "member";
+    return { me, workspace, canAdminister, canUpload };
+  },
+);
 
 export async function getMembers(workspaceId: string): Promise<Member[]> {
   const payload = await apiRequest<{ items: Member[] }>(
