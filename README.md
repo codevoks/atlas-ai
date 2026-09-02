@@ -8,11 +8,17 @@
 ![Node](https://img.shields.io/badge/node-22%2B-339933?logo=node.js&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/postgres-17-4169E1?logo=postgresql&logoColor=white)
 
-![Atlas AI landing page](docs/assets/01-hero.png)
-
 Upload a document, and Atlas parses it, chunks it, embeds it, and makes it searchable — with every retrieved evidence item traceable back to a specific chunk, document version, and source. Ask a question, and the answer cites only that evidence, with citations checked *after* generation, not assumed from the model's output. Kick off a research task, and it plans bounded sub-questions, retrieves evidence, and stops for a human to approve before it synthesizes a final report.
 
 None of this needs a paid API key. The whole golden path — ingestion, hybrid retrieval, grounded answers, bounded research, security guardrails — runs on local PostgreSQL and deterministic local AI adapters, in Docker, for free.
+
+## Demo
+
+A short walkthrough is being recorded alongside an upcoming UI polish pass and will be embedded here. It will show the golden path end to end — upload → ingestion → hybrid retrieval → a grounded answer with a verified citation — plus Atlas's strongest engineering differentiator: a bounded research run pausing at a human approval gate before it's allowed to synthesize a cited report.
+
+Until then, the [Try Atlas locally](#try-atlas-locally) section below reproduces that exact walkthrough against a live local instance in a handful of commands.
+
+<!-- Product demo video/GIF will be inserted here after final UI polish. -->
 
 ## Why this exists
 
@@ -51,15 +57,9 @@ External model/embedding/reranking providers sit behind narrow typed adapters wi
 
 A document goes through an explicit, resumable state machine — `PENDING → CLAIMED → VERIFYING → PARSING → NORMALIZING → CHUNKING → EMBEDDING → PUBLISHING → SUCCEEDED` — and nothing is searchable until it publishes atomically. Every chunk keeps its parser/chunker version and content hash; every embedding keeps its provider/model/version, so nothing gets silently compared across incompatible vector spaces.
 
-![Document ingestion with parser and chunker provenance](docs/assets/05-document-provenance.png)
-
 Retrieval fuses semantic (cosine similarity) and lexical (PostgreSQL full-text) candidates with deterministic Reciprocal Rank Fusion, inside the *same* tenant/authorization filter on every branch — there's no fusion step that runs outside the access-control boundary.
 
-![Hybrid retrieval evidence with per-branch ranks and RRF scores](docs/assets/06-hybrid-retrieval.png)
-
 Generation only ever sees the evidence retrieval handed it. After the model responds, a separate validator checks every citation marker against the supplied evidence spans — a citation is marked `verified` only if the quoted text actually resolves to an evidence item the model was given. An unverifiable claim doesn't get to look verified.
-
-![Grounded answer with a citation checked against retrieved evidence](docs/assets/07-grounded-answer.png)
 
 ```mermaid
 sequenceDiagram
@@ -81,13 +81,7 @@ sequenceDiagram
 
 ## Bounded research, with a human in the loop
 
-Beyond single-shot Q&A, Atlas runs a bounded research workflow: it plans sub-questions, calls only two allowlisted tools (Atlas retrieval and a local policy catalog — no shell, no arbitrary HTTP), checkpoints its state, and then **stops and waits for explicit human approval** before it's allowed to synthesize a final report. Deny the approval and the run cancels; nothing gets generated without sign-off.
-
-![Bounded research run paused at a human approval gate](docs/assets/08-research-approval.png)
-
-Once approved, synthesis runs and the report cites the same evidence the run already retrieved:
-
-![Completed research run with a cited report](docs/assets/09-research-report.png)
+Beyond single-shot Q&A, Atlas runs a bounded research workflow: it plans sub-questions, calls only two allowlisted tools (Atlas retrieval and a local policy catalog — no shell, no arbitrary HTTP), checkpoints its state, and then **stops and waits for explicit human approval** before it's allowed to synthesize a final report. Deny the approval and the run cancels; nothing gets generated without sign-off. Once approved, synthesis runs and the report cites the same evidence the run already retrieved.
 
 ```mermaid
 stateDiagram-v2
@@ -124,9 +118,7 @@ flowchart TB
     Security --> Validator
 ```
 
-Every workspace exposes its own live security and operations posture — no paid observability required to see it:
-
-![Guardrail posture and operations readiness panel](docs/assets/04-security-ops-posture.png)
+Every workspace exposes its own live security and operations posture — telemetry, guardrail counts, dependency status, SLO objectives — with no paid observability required to see it.
 
 ## Engineering proof, not just claims
 
