@@ -1,6 +1,8 @@
 .agents/
 .codex/
+.claude/
 AGENTS.md
+CLAUDE.md
 PROMPT.md
 .local-private/
 .local-object-store*/
