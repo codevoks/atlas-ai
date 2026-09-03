@@ -14,11 +14,13 @@ None of this needs a paid API key. The whole golden path — ingestion, hybrid r
 
 ## Demo
 
-A short walkthrough is being recorded alongside an upcoming UI polish pass and will be embedded here. It will show the golden path end to end — upload → ingestion → hybrid retrieval → a grounded answer with a verified citation — plus Atlas's strongest engineering differentiator: a bounded research run pausing at a human approval gate before it's allowed to synthesize a cited report.
+![Atlas grounded answer with an opened citation showing the verified passage and full retrieval/parser provenance](docs/assets/atlas-ai-demo.png)
 
-Until then, the [Try Atlas locally](#try-atlas-locally) section below reproduces that exact walkthrough against a live local instance in a handful of commands.
+A grounded answer to *"What approval is required for a payment over $25,000?"*, with its citation opened to show the exact quoted span, `verified` status, and the retrieval/parser provenance behind it — evidence rank, semantic/lexical/RRF scores, parser and chunker versions. This is a real local run against an uploaded document, not a mock.
 
-<!-- Product demo video/GIF will be inserted here after final UI polish. -->
+A recorded walkthrough isn't available yet. The [Try Atlas locally](#try-atlas-locally) section below reproduces this exact state — and the rest of the golden path, including bounded research pausing at a human approval gate — against a live local instance in a handful of commands.
+
+<!-- Demo video/GIF may be added here later. -->
 
 ## Why this exists
 
