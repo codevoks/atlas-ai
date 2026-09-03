@@ -1,5 +1,8 @@
 import { createResearchRunAction, decideResearchApprovalAction } from "@/app/actions";
+import { formatReportForClipboard } from "@/lib/clipboard-format";
 import { CopyableId } from "@/components/copyable-id";
+import { CopyButton } from "@/components/copy-button";
+import { ExportPdfButton } from "@/components/export-pdf-button";
 import { ResearchIcon } from "@/components/icons";
 import { SubmitButton } from "@/components/submit-button";
 import { getResearchRuns, loadWorkspaceContext, type ResearchRun } from "@/lib/api";
@@ -154,7 +157,17 @@ function ResearchRunCard({ run, workspaceId }: { run: ResearchRun; workspaceId: 
 
       {run.report_text ? (
         <div style={{ marginTop: 18 }}>
-          <p className="eyebrow">Report</p>
+          <div className="result-card-header" style={{ marginBottom: 8 }}>
+            <p className="eyebrow" style={{ marginBottom: 0 }}>Report</p>
+            <div className="inline-form">
+              <CopyButton
+                copiedLabel="Report copied"
+                label="Copy report"
+                text={formatReportForClipboard({ question: run.question, reportText: run.report_text ?? "" })}
+              />
+              <ExportPdfButton runId={run.id} workspaceId={workspaceId} />
+            </div>
+          </div>
           <pre
             className="mono"
             style={{

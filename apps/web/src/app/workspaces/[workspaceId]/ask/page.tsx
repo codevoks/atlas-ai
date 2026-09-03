@@ -2,6 +2,8 @@ import { AnswerWithEvidence } from "@/components/evidence/answer-with-evidence";
 import type { EvidenceDetail } from "@/components/evidence/types";
 import { AskIcon } from "@/components/icons";
 import { CopyableId } from "@/components/copyable-id";
+import { CopyButton } from "@/components/copy-button";
+import { formatAnswerForClipboard } from "@/lib/clipboard-format";
 import {
   AtlasApiError,
   answerQuestion,
@@ -119,7 +121,14 @@ export default async function AskPage({ params, searchParams }: AskPageProps) {
               <span className="pill">
                 {answer.status} · {answer.grounding_status}
               </span>
-              <span className="faint text-xs">${answer.total_cost_usd.toFixed(2)}</span>
+              <div className="inline-form">
+                <span className="faint text-xs">${answer.total_cost_usd.toFixed(2)}</span>
+                <CopyButton
+                  copiedLabel="Answer copied"
+                  label="Copy answer"
+                  text={formatAnswerForClipboard({ query, answerText: answer.answer_text })}
+                />
+              </div>
             </div>
             <AnswerWithEvidence answerText={answer.answer_text} evidence={evidence} />
             <p className="faint text-xs" style={{ marginTop: 18 }}>

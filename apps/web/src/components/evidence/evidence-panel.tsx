@@ -3,8 +3,10 @@
 import { useEffect } from "react";
 
 import { CopyableId } from "@/components/copyable-id";
+import { CopyButton } from "@/components/copy-button";
 import { CloseIcon } from "@/components/icons";
 import type { EvidenceDetail } from "@/components/evidence/types";
+import { formatEvidenceForClipboard } from "@/lib/clipboard-format";
 
 interface EvidencePanelProps {
   evidence: EvidenceDetail;
@@ -40,9 +42,25 @@ export function EvidencePanel({ evidence, onClose }: EvidencePanelProps) {
               {evidence.documentTitle}
             </h2>
           </div>
-          <button className="button ghost icon" onClick={onClose} type="button">
-            <CloseIcon />
-          </button>
+          <div className="inline-form" style={{ flexWrap: "nowrap" }}>
+            <CopyButton
+              copiedLabel="Copied"
+              label="Copy citation"
+              text={formatEvidenceForClipboard({
+                marker: evidence.marker,
+                status: evidence.status,
+                documentTitle: evidence.documentTitle,
+                sourceName: evidence.sourceName,
+                chunkOrdinal: evidence.chunkOrdinal,
+                quote: evidence.quote,
+                retrievalStage: evidence.retrievalStage,
+                rank: evidence.rank,
+              })}
+            />
+            <button className="button ghost icon" onClick={onClose} type="button">
+              <CloseIcon />
+            </button>
+          </div>
         </div>
         <div className="evidence-panel-body">
           <span className={`pill ${verified ? "verified" : "danger"} dot`} style={{ width: "fit-content" }}>

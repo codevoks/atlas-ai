@@ -147,10 +147,11 @@ small, .text-sm { font-size: 0.8125rem; line-height: 1.5; }
    ============================================================ */
 .button {
   display: inline-flex; min-height: 38px; align-items: center; justify-content: center; gap: 8px;
-  border: 1px solid var(--accent); border-radius: var(--r-sm); padding: 0 15px;
+  border: 1px solid var(--accent); border-radius: var(--r-sm); padding: 0 15px; white-space: nowrap;
   background: var(--accent); color: var(--ink-on-accent); font-weight: 550; font-size: 0.875rem;
   transition: filter var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
+.button svg { flex: 0 0 auto; width: 14px; height: 14px; }
 .button:hover { filter: brightness(1.08); }
 .button:active { transform: translateY(1px); }
 .button:disabled { cursor: wait; opacity: 0.55; filter: none; }

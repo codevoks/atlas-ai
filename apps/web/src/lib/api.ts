@@ -466,6 +466,10 @@ export async function getResearchRuns(workspaceId: string): Promise<ResearchRun[
   return payload.items;
 }
 
+export async function getResearchRun(workspaceId: string, runId: string): Promise<ResearchRun> {
+  return apiRequest<ResearchRun>(`/v1/workspaces/${workspaceId}/research-runs/${runId}`);
+}
+
 export async function getSecurityPosture(workspaceId: string): Promise<SecurityPosture> {
   return apiRequest<SecurityPosture>(`/v1/workspaces/${workspaceId}/security/posture`);
 }
