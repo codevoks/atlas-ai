@@ -1,23 +1,31 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import re
 import unicodedata
 import uuid
 from dataclasses import dataclass
 
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
+
 from atlas_api.config import Settings
 from atlas_api.domain.errors import ResourceExhaustedError, ValidationError
 
 PARSER_NAME = "atlas-text-parser"
 PARSER_VERSION = "2026-08-27"
+PDF_PARSER_NAME = "atlas-pdf-parser"
+PDF_PARSER_VERSION = "2026-09-09"
 CHUNKER_NAME = "atlas-paragraph-chunker"
 CHUNKER_VERSION = "2026-08-27"
 SUPPORTED_MEDIA_TYPES = frozenset(
     {"text/plain", "text/markdown", "application/markdown"}
 )
 TEXT_LIKE_EXTENSIONS = (".txt", ".md", ".markdown")
+PDF_MEDIA_TYPES = frozenset({"application/pdf"})
+PDF_EXTENSION = ".pdf"
 MAX_METADATA_VALUE_LENGTH = 255
 
 
@@ -61,6 +69,8 @@ def parse_document(
 ) -> ParsedDocument:
     if len(body) > settings.parser_max_bytes:
         raise ResourceExhaustedError("The document exceeds the parser byte limit.")
+    if _is_pdf(media_type, object_key):
+        return _parse_pdf(body, media_type)
     _reject_binary_magic(body)
     if not _is_supported_media_type(media_type, object_key):
         raise ValidationError(
@@ -89,6 +99,65 @@ def parse_document(
             "block_count": len(blocks),
             "character_count": len(normalized_text),
             "line_count": normalized_text.count("\n") + 1,
+        },
+    )
+
+
+def _parse_pdf(body: bytes, media_type: str) -> ParsedDocument:
+    try:
+        reader = PdfReader(io.BytesIO(body))
+        page_count = len(reader.pages)
+    except (PdfReadError, ValueError) as error:
+        raise ValidationError("The document is not a valid PDF file.") from error
+    if reader.is_encrypted:
+        raise ValidationError("Encrypted PDF files are not supported.")
+
+    normalized_pages: list[str] = []
+    blocks: list[ParsedBlock] = []
+    cursor = 0
+    for page_index, page in enumerate(reader.pages, start=1):
+        try:
+            raw_page_text = page.extract_text() or ""
+        except Exception as error:  # pypdf can raise a range of parser errors per page
+            raise ValidationError(
+                "The document text could not be extracted from the PDF."
+            ) from error
+        normalized_page = _normalize_text(_reflow_pdf_text(raw_page_text))
+        if not normalized_page:
+            continue
+        if normalized_pages:
+            cursor += 2  # the "\n\n" separator this page will be joined with below
+        for block in _blocks_from_text(normalized_page):
+            blocks.append(
+                ParsedBlock(
+                    block_type=block.block_type,
+                    text=block.text,
+                    start_char=block.start_char + cursor,
+                    end_char=block.end_char + cursor,
+                    heading=block.heading,
+                    page_number=page_index,
+                )
+            )
+        normalized_pages.append(normalized_page)
+        cursor += len(normalized_page)
+
+    normalized_text = "\n\n".join(normalized_pages)
+    if not normalized_text.strip():
+        raise ValidationError(
+            "The document does not contain extractable text (it may be a scanned "
+            "image PDF, which is out of scope for this parser)."
+        )
+    return ParsedDocument(
+        normalized_text=normalized_text,
+        blocks=blocks,
+        metadata={
+            "parser": PDF_PARSER_NAME,
+            "parser_version": PDF_PARSER_VERSION,
+            "media_type": media_type,
+            "block_count": len(blocks),
+            "character_count": len(normalized_text),
+            "line_count": normalized_text.count("\n") + 1,
+            "page_count": page_count,
         },
     )
 
@@ -140,8 +209,8 @@ def normalized_artifact_key(workspace_id: uuid.UUID, version_id: uuid.UUID) -> s
 
 def normalized_artifact_body(parsed: ParsedDocument, chunks: list[ChunkDraft]) -> bytes:
     payload = {
-        "parser": PARSER_NAME,
-        "parser_version": PARSER_VERSION,
+        "parser": parsed.metadata["parser"],
+        "parser_version": parsed.metadata["parser_version"],
         "chunker": CHUNKER_NAME,
         "chunker_version": CHUNKER_VERSION,
         "metadata": parsed.metadata,
@@ -173,9 +242,16 @@ def _is_supported_media_type(media_type: str, object_key: str) -> bool:
     )
 
 
+def _is_pdf(media_type: str, object_key: str) -> bool:
+    clean_media_type = media_type.split(";", 1)[0].strip().lower()
+    return clean_media_type in PDF_MEDIA_TYPES or object_key.lower().endswith(
+        PDF_EXTENSION
+    )
+
+
 def _reject_binary_magic(body: bytes) -> None:
     signatures = {
-        b"%PDF": "PDF parsing is deferred beyond Phase 3.",
+        b"%PDF": "PDF files must be uploaded with the application/pdf media type or a .pdf filename.",
         b"PK\x03\x04": "Archive parsing is not supported.",
         b"\xd0\xcf\x11\xe0": "Office binary parsing is not supported.",
         b"\x89PNG": "Image parsing is not supported.",
@@ -187,6 +263,23 @@ def _reject_binary_magic(body: bytes) -> None:
     sample = body[:4096]
     if sample and sample.count(b"\x00") > 0:
         raise ValidationError("The document appears to be binary.")
+
+
+def _reflow_pdf_text(raw_text: str) -> str:
+    """Merge each visual line-wrap PDF viewers/extractors insert mid-paragraph back into
+    flowing prose, so a wrapped sentence stays a single verbatim-quotable string. Blank
+    lines still mark real paragraph breaks.
+    """
+    text = raw_text.replace("\r\n", "\n").replace("\r", "\n")
+    # NFKC expands typographic ligatures some PDF fonts emit (e.g. U+FB01 "ﬁ") into
+    # plain letters, so lexical search and verbatim-quote matching see ordinary "fi".
+    text = unicodedata.normalize("NFKC", text)
+    paragraphs = re.split(r"\n{2,}", text)
+    reflowed = [
+        " ".join(line.strip() for line in paragraph.split("\n") if line.strip())
+        for paragraph in paragraphs
+    ]
+    return "\n\n".join(paragraph for paragraph in reflowed if paragraph)
 
 
 def _normalize_text(raw_text: str) -> str:
@@ -251,13 +344,16 @@ def _draft_from_blocks(
     end = blocks[-1].end_char
     chunk_text = text.strip()
     token_count = _count_tokens(chunk_text)
+    page_numbers = {
+        block.page_number for block in blocks if block.page_number is not None
+    }
     return ChunkDraft(
         ordinal=ordinal,
         block_type="section"
         if any(block.block_type == "heading" for block in blocks)
         else "paragraph",
         heading=heading,
-        page_number=None,
+        page_number=page_numbers.pop() if len(page_numbers) == 1 else None,
         start_char=start,
         end_char=end,
         token_count=token_count,

@@ -48,8 +48,8 @@ export default async function OverviewPage({ params }: OverviewPageProps) {
           </span>
           <strong>This workspace is ready for its first source</strong>
           <p>
-            Create a source, upload a text or Markdown document, and Atlas will parse, chunk,
-            and embed it — ready to search and cite within seconds.
+            Create a source, upload a text, Markdown, or PDF document, and Atlas will parse,
+            chunk, and embed it — ready to search and cite within seconds.
           </p>
           <Link className="button" href={`/workspaces/${workspace.id}/documents`} style={{ marginTop: 6 }}>
             Add a document

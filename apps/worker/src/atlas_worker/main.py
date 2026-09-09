@@ -34,8 +34,6 @@ from atlas_api.infrastructure.repositories import (
 from atlas_worker.ingestion import (
     CHUNKER_NAME,
     CHUNKER_VERSION,
-    PARSER_NAME,
-    PARSER_VERSION,
     chunk_document,
     normalized_artifact_body,
     normalized_artifact_key,
@@ -384,8 +382,8 @@ async def _run_once(
                 )
                 for chunk in chunks
             ],
-            parser_name=PARSER_NAME,
-            parser_version=PARSER_VERSION,
+            parser_name=str(parsed.metadata["parser"]),
+            parser_version=str(parsed.metadata["parser_version"]),
             chunker_name=CHUNKER_NAME,
             chunker_version=CHUNKER_VERSION,
             normalized_object_key=artifact_key,

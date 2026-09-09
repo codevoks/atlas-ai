@@ -82,7 +82,10 @@ export default async function DocumentsPage({ params, searchParams }: DocumentsP
                 <DocumentsIcon />
               </span>
               <strong>No documents yet</strong>
-              <p>Upload a text or Markdown file to see Atlas parse, chunk, and embed it here.</p>
+              <p>
+                Upload a text, Markdown, or PDF file to see Atlas parse, chunk, and embed it
+                here.
+              </p>
             </div>
           ) : (
             <div className="row-list">
@@ -192,8 +195,8 @@ export default async function DocumentsPage({ params, searchParams }: DocumentsP
               <p className="eyebrow">Direct upload</p>
               <h2 className="display-3">Add a document</h2>
               <p className="muted text-sm" style={{ marginTop: 8 }}>
-                Atlas parses UTF-8 text and Markdown, embeds deterministic chunks, and exposes
-                hybrid evidence search immediately after ingestion.
+                Atlas parses UTF-8 text, Markdown, and PDF, embeds deterministic chunks, and
+                exposes hybrid evidence search immediately after ingestion.
               </p>
             </div>
             {sources.length === 0 ? (
@@ -221,10 +224,12 @@ export default async function DocumentsPage({ params, searchParams }: DocumentsP
                   <div className="dropzone">
                     <div className="dropzone-inner">
                       <UploadIcon />
-                      <p style={{ marginTop: 8 }}>Drop a .txt or .md file, or click to browse</p>
+                      <p style={{ marginTop: 8 }}>
+                        Drop a .txt, .md, or .pdf file, or click to browse
+                      </p>
                     </div>
                     <input
-                      accept=".txt,.md,.markdown,text/plain,text/markdown,application/markdown"
+                      accept=".txt,.md,.markdown,.pdf,text/plain,text/markdown,application/markdown,application/pdf"
                       id="document-file"
                       name="file"
                       required
