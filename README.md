@@ -18,9 +18,11 @@ None of this needs a paid API key. The whole golden path — ingestion, hybrid r
 
 A grounded answer to *"What approval is required for a payment over $25,000?"*, with its citation opened to show the exact quoted span, `verified` status, and the retrieval/parser provenance behind it — evidence rank, semantic/lexical/RRF scores, parser and chunker versions. This is a real local run against an uploaded document, not a mock.
 
-A recorded walkthrough isn't available yet. The [Try Atlas locally](#try-atlas-locally) section below reproduces this exact state — and the rest of the golden path, including bounded research pausing at a human approval gate — against a live local instance in a handful of commands.
+![Atlas answering a question from an uploaded PDF using a real local LLM, then verifying its citation against the retrieved evidence](docs/assets/atlas-ai-ollama-demo.gif)
 
-<!-- Demo video/GIF may be added here later. -->
+This walkthrough swaps in a real model for the deterministic default: `ANSWER_PROVIDER=ollama` runs generation through [Ollama](https://ollama.com) on `llama3.2:3b`, entirely on-device — still $0, no API key. A PDF is uploaded and parsed by `atlas-pdf-parser`; the model's answer still only ships with a citation once it's been checked, after generation, against the exact evidence text it was given.
+
+The [Try Atlas locally](#try-atlas-locally) section below reproduces this exact state — and the rest of the golden path, including bounded research pausing at a human approval gate — against a live local instance in a handful of commands.
 
 ## Why this exists
 
@@ -172,14 +174,16 @@ pnpm --filter @atlas/web dev       # http://localhost:3000
 Then, in the browser at `http://localhost:3000`:
 
 1. **Sign in** with a deterministic local identity (Alice Owner / Bob Member) — no external identity provider needed in development.
-2. **Create a workspace** and a source, then **upload** a `.txt` or `.md` file.
+2. **Create a workspace** and a source, then **upload** a `.txt`, `.md`, or `.pdf` file.
 3. Trigger ingestion (the worker polls automatically, or call `POST /internal/ingestion/run-once` on the worker for an instant local demo step).
 4. **Search** the workspace with hybrid retrieval, then **ask a question** and inspect the verified citation.
 5. Start a **bounded research run**, watch it pause for approval, approve it, and read the cited report.
 
+To reproduce the [demo above](#demo) with a real model instead of the deterministic default: [install Ollama](https://ollama.com), `ollama pull llama3.2:3b`, then set `ANSWER_PROVIDER=ollama` and `ANSWER_MODEL=llama3.2:3b` in `.env` before starting the API. Citations are still verified after generation, exactly as with the deterministic generator.
+
 ## Zero-cost, by construction
 
-The entire path above — ingestion, embeddings, hybrid retrieval, generation, citation validation, evaluation, and bounded research — runs on local PostgreSQL and deterministic local AI adapters. No paid model API, hosted vector database, managed search, cloud object storage, or domain is required for development, testing, CI, or this demo. Hosted providers (a real LLM, Clerk-based production auth, S3, managed observability) exist as adapter-compatible, production-grade code paths, but they are opt-in and explicitly configured — never required by the default path. `infra/aws/` is plan-only Terraform: zero `resource` blocks, no cloud credentials, `enable_billable_resources = false`.
+The entire path above — ingestion, embeddings, hybrid retrieval, generation, citation validation, evaluation, and bounded research — runs on local PostgreSQL and deterministic local AI adapters. No paid model API, hosted vector database, managed search, cloud object storage, or domain is required for development, testing, CI, or this demo. A real local LLM (Ollama), and hosted providers for production auth (Clerk), S3, and managed observability, exist as adapter-compatible, production-grade code paths, but they are opt-in and explicitly configured — never required by the default path. `infra/aws/` is plan-only Terraform: zero `resource` blocks, no cloud credentials, `enable_billable_resources = false`.
 
 ## Tech stack
 
@@ -188,7 +192,7 @@ The entire path above — ingestion, embeddings, hybrid retrieval, generation, c
 - **API:** FastAPI + SQLAlchemy (async) + Alembic, OpenAPI-first contracts
 - **Worker:** Python, durable job leasing over PostgreSQL
 - **Database:** PostgreSQL — transactional state, lexical (FTS) and vector (exact cosine) search in one store
-- **AI adapters:** deterministic local embedding / retrieval / reranking / generation / evaluation, behind provider-neutral interfaces
+- **AI adapters:** deterministic local embedding / retrieval / reranking / generation / evaluation, behind provider-neutral interfaces — plus an opt-in real local-LLM generation adapter (`llama3.2:3b` via [Ollama](https://ollama.com))
 - **Infra artifacts:** Dockerfiles for all three services, GitHub Actions CI, plan-only Terraform/AWS baseline
 
 ## Repository structure
@@ -206,8 +210,8 @@ infra/aws/      Plan-only Terraform baseline (no resources, no credentials)
 
 This is a local-first, deterministic baseline — it proves the architecture and safety contracts, and it is explicit about what it defers rather than quietly pretending otherwise:
 
-- The default generator, embedder, and reranker are **deterministic and local**, not a hosted frontier model — they establish a correctness and grounding baseline, not production answer quality. Hosted-provider adapters are opt-in and require their own evaluation pass.
-- Ingestion supports UTF-8 text and Markdown only. PDF, Office formats, OCR, and archive handling are intentionally out of scope for the current parser boundary.
+- The default generator, embedder, and reranker are **deterministic and local**, not a hosted frontier model — they establish a correctness and grounding baseline, not production answer quality. An opt-in real local-LLM generator (Ollama) is available and still runs at $0; paid hosted-provider adapters are not implemented and would require their own evaluation pass.
+- Ingestion supports UTF-8 text, Markdown, and text-based PDF. Scanned/image-only PDFs (no OCR yet), Office formats, and archive handling are intentionally out of scope for the current parser boundary.
 - No malware scanning, enterprise DLP/KMS/HSM, SSO/SCIM, or external penetration testing — pattern-based guardrails and PostgreSQL-enforced tenant isolation are the current line of defense.
 - pgvector/ANN indexing, OpenSearch, and Redis-backed coordination are evidence-gated future decisions, not implemented — PostgreSQL exact cosine search and full-text search are the zero-cost baseline today.
 - Not deployed to a live production cloud environment; `infra/aws/` documents an intended shape without provisioning it.
