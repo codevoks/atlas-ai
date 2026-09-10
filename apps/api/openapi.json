@@ -1443,6 +1443,64 @@
         }
       }
     },
+    "/v1/workspaces/{workspace_id}/answer-runs": {
+      "get": {
+        "tags": [
+          "answers"
+        ],
+        "summary": "List Answer Runs",
+        "operationId": "list_answer_runs_v1_workspaces__workspace_id__answer_runs_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnswerRunListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/workspaces/{workspace_id}/answer-runs/{answer_run_id}": {
       "get": {
         "tags": [
@@ -2881,6 +2939,22 @@
           "created_at"
         ],
         "title": "AnswerResponse"
+      },
+      "AnswerRunListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AnswerResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "AnswerRunListResponse"
       },
       "ApprovalStatus": {
         "type": "string",

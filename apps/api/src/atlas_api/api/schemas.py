@@ -722,6 +722,10 @@ class AnswerResponse(BaseModel):
         )
 
 
+class AnswerRunListResponse(BaseModel):
+    items: list[AnswerResponse]
+
+
 class EvaluationDatasetCreate(BaseModel):
     name: str = Field(min_length=2, max_length=160)
     description: str | None = Field(default=None, max_length=1_000)

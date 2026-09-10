@@ -7,6 +7,8 @@ import { formatAnswerForClipboard } from "@/lib/clipboard-format";
 import {
   AtlasApiError,
   answerQuestion,
+  getAnswerRun,
+  getAnswerRuns,
   getDocumentChunks,
   getDocumentVersions,
   getSources,
@@ -17,22 +19,30 @@ import {
 
 interface AskPageProps {
   params: Promise<{ workspaceId: string }>;
-  searchParams: Promise<{ q?: string; mode?: string; config?: string }>;
+  searchParams: Promise<{ q?: string; mode?: string; config?: string; run?: string }>;
 }
 
 export default async function AskPage({ params, searchParams }: AskPageProps) {
   const { workspaceId } = await params;
-  const { q, mode, config } = await searchParams;
+  const { q, mode, config, run } = await searchParams;
   await loadWorkspaceContext(workspaceId);
 
   const query = q ? q.split(/\s+/).join(" ").slice(0, 4000) : "";
   const selectedMode: SearchMode = mode === "semantic" || mode === "lexical" ? mode : "hybrid";
   const selectedConfig = config === "expanded" ? "expanded" : "balanced";
+  const viewingSavedRun = Boolean(run);
 
   let answer: AnswerResult | null = null;
   let evidence: EvidenceDetail[] = [];
   let errorMessage = "";
-  if (query) {
+  if (run) {
+    try {
+      answer = await getAnswerRun(workspaceId, run);
+      evidence = await buildEvidenceDetails(workspaceId, answer);
+    } catch (error) {
+      errorMessage = error instanceof AtlasApiError ? error.message : "That saved answer could not be loaded.";
+    }
+  } else if (query) {
     try {
       answer = await answerQuestion(
         workspaceId,
@@ -45,6 +55,8 @@ export default async function AskPage({ params, searchParams }: AskPageProps) {
       errorMessage = error instanceof AtlasApiError ? error.message : "The answer could not be generated.";
     }
   }
+
+  const recentRuns = await getAnswerRuns(workspaceId);
 
   return (
     <div className="app-content">
@@ -103,6 +115,13 @@ export default async function AskPage({ params, searchParams }: AskPageProps) {
         </p>
       ) : null}
 
+      {viewingSavedRun && answer ? (
+        <p className="eyebrow" style={{ marginBottom: 20 }}>
+          Viewing a saved answer from {new Date(answer.created_at).toLocaleString()} ·{" "}
+          <a href={`/workspaces/${workspaceId}/ask`}>Ask a new question</a>
+        </p>
+      ) : null}
+
       {!answer ? (
         <div className="empty-state">
           <span className="empty-icon">
@@ -126,7 +145,7 @@ export default async function AskPage({ params, searchParams }: AskPageProps) {
                 <CopyButton
                   copiedLabel="Answer copied"
                   label="Copy answer"
-                  text={formatAnswerForClipboard({ query, answerText: answer.answer_text })}
+                  text={formatAnswerForClipboard({ query: answer.query, answerText: answer.answer_text })}
                 />
               </div>
             </div>
@@ -170,6 +189,32 @@ export default async function AskPage({ params, searchParams }: AskPageProps) {
           ) : null}
         </div>
       )}
+
+      {recentRuns.length > 0 ? (
+        <div style={{ marginTop: 40 }}>
+          <p className="eyebrow">Recent questions</p>
+          <div className="row-list">
+            {recentRuns.map((item) => (
+              <a
+                className="row"
+                href={`/workspaces/${workspaceId}/ask?run=${item.id}`}
+                key={item.id}
+                style={{ alignItems: "flex-start" }}
+              >
+                <span className={`pill dot ${item.status === "succeeded" ? "verified" : "danger"}`}>
+                  {item.status}
+                </span>
+                <span className="row-identity">
+                  <strong>{item.query}</strong>
+                  <p className="row-quote">
+                    {new Date(item.created_at).toLocaleString()} · {item.generation_model}
+                  </p>
+                </span>
+              </a>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

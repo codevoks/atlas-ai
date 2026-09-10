@@ -835,6 +835,10 @@ class DocumentStore(Protocol):
         answer_run_id: uuid.UUID,
     ) -> AnswerRunRecord | None: ...
 
+    async def list_answer_runs(
+        self, workspace_id: uuid.UUID, *, limit: int
+    ) -> list[AnswerRunRecord]: ...
+
     async def validate_ready_chunk_ids(
         self, workspace_id: uuid.UUID, chunk_ids: list[uuid.UUID]
     ) -> set[uuid.UUID]: ...

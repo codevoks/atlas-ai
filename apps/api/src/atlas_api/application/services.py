@@ -1468,6 +1468,18 @@ class AnswerService:
                 raise ResourceNotFoundError()
             return record
 
+    async def list_answer_runs(
+        self, *, actor: Actor, workspace_id: uuid.UUID, limit: int
+    ) -> list[AnswerRunRecord]:
+        if not 1 <= limit <= 25:
+            raise ValidationError("Answer run limit must be between 1 and 25.")
+        async with self._transactions() as tx:
+            membership = await tx.workspaces.membership_context(workspace_id, actor.user_id)
+            if membership is None:
+                raise ResourceNotFoundError()
+            require_permission(membership, Permission.DOCUMENT_READ)
+            return await tx.documents.list_answer_runs(workspace_id, limit=limit)
+
 
 class EvaluationService:
     def __init__(self, transaction_factory: TransactionFactory, settings: Settings) -> None:

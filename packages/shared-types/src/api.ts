@@ -384,6 +384,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workspaces/{workspace_id}/answer-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Answer Runs */
+        get: operations["list_answer_runs_v1_workspaces__workspace_id__answer_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workspaces/{workspace_id}/answer-runs/{answer_run_id}": {
         parameters: {
             query?: never;
@@ -783,6 +800,11 @@ export interface components {
             citations: components["schemas"]["CitationResponse"][];
             /** Created At */
             created_at: string;
+        };
+        /** AnswerRunListResponse */
+        AnswerRunListResponse: {
+            /** Items */
+            items: components["schemas"]["AnswerResponse"][];
         };
         /**
          * ApprovalStatus
@@ -2932,6 +2954,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnswerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_answer_runs_v1_workspaces__workspace_id__answer_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnswerRunListResponse"];
                 };
             };
             /** @description Validation Error */

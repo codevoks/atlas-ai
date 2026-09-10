@@ -1248,12 +1248,30 @@ class SqlAlchemyDocumentStore:
         )
         if answer is None:
             return None
+        return await self._load_answer_run_record(workspace_id, answer)
+
+    async def list_answer_runs(
+        self, workspace_id: uuid.UUID, *, limit: int
+    ) -> list[AnswerRunRecord]:
+        answers = (
+            await self._session.scalars(
+                select(AnswerRunModel)
+                .where(AnswerRunModel.workspace_id == workspace_id)
+                .order_by(AnswerRunModel.created_at.desc(), AnswerRunModel.id.desc())
+                .limit(limit)
+            )
+        ).all()
+        return [await self._load_answer_run_record(workspace_id, answer) for answer in answers]
+
+    async def _load_answer_run_record(
+        self, workspace_id: uuid.UUID, answer: AnswerRunModel
+    ) -> AnswerRunRecord:
         evidence_rows = (
             await self._session.scalars(
                 select(AnswerEvidenceModel)
                 .where(
                     AnswerEvidenceModel.workspace_id == workspace_id,
-                    AnswerEvidenceModel.answer_run_id == answer_run_id,
+                    AnswerEvidenceModel.answer_run_id == answer.id,
                 )
                 .order_by(AnswerEvidenceModel.rank.asc(), AnswerEvidenceModel.id.asc())
             )
@@ -1263,7 +1281,7 @@ class SqlAlchemyDocumentStore:
                 select(CitationModel)
                 .where(
                     CitationModel.workspace_id == workspace_id,
-                    CitationModel.answer_run_id == answer_run_id,
+                    CitationModel.answer_run_id == answer.id,
                 )
                 .order_by(CitationModel.answer_start_char.asc(), CitationModel.id.asc())
             )

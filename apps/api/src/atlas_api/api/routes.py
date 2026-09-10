@@ -20,6 +20,7 @@ from atlas_api.api.dependencies import (
 from atlas_api.api.schemas import (
     AnswerRequest,
     AnswerResponse,
+    AnswerRunListResponse,
     ChunkListResponse,
     ChunkResponse,
     DocumentListResponse,
@@ -558,6 +559,21 @@ async def create_answer(
         retrieval_config_version=payload.retrieval_config_version,
     )
     return AnswerResponse.from_record(record)
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/answer-runs",
+    response_model=AnswerRunListResponse,
+    tags=["answers"],
+)
+async def list_answer_runs(
+    workspace_id: uuid.UUID,
+    actor: ActorDependency,
+    service: AnswerServiceDependency,
+    limit: int = 10,
+) -> AnswerRunListResponse:
+    records = await service.list_answer_runs(actor=actor, workspace_id=workspace_id, limit=limit)
+    return AnswerRunListResponse(items=[AnswerResponse.from_record(item) for item in records])
 
 
 @router.get(

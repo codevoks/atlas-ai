@@ -452,6 +452,17 @@ export async function answerQuestion(
   });
 }
 
+export async function getAnswerRuns(workspaceId: string): Promise<AnswerResult[]> {
+  const payload = await apiRequest<{ items: AnswerResult[] }>(
+    `/v1/workspaces/${workspaceId}/answer-runs?limit=10`,
+  );
+  return payload.items;
+}
+
+export async function getAnswerRun(workspaceId: string, runId: string): Promise<AnswerResult> {
+  return apiRequest<AnswerResult>(`/v1/workspaces/${workspaceId}/answer-runs/${runId}`);
+}
+
 export async function getEvaluationRuns(workspaceId: string): Promise<EvaluationRun[]> {
   const payload = await apiRequest<{ items: EvaluationRun[] }>(
     `/v1/workspaces/${workspaceId}/evaluation-runs?limit=5`,
