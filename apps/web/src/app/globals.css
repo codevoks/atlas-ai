@@ -442,6 +442,7 @@ a.card:hover, button.card:hover, .card.interactive:hover {
    Upload dropzone
    ============================================================ */
 .dropzone {
+  position: relative;
   border: 1px dashed var(--line-strong); border-radius: var(--r-md); padding: 22px; text-align: center;
   display: grid; gap: 6px; justify-items: center; color: var(--ink-muted); font-size: 0.8125rem;
   transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
