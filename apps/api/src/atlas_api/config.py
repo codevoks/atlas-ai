@@ -42,13 +42,15 @@ class Settings(BaseSettings):
     hybrid_search_rrf_k: int = 60
     hybrid_search_candidate_multiplier: int = 4
     retrieval_config_version: str = "phase5-postgres-fts-rrf-v1"
-    answer_provider: Literal["deterministic-local"] = "deterministic-local"
+    answer_provider: Literal["deterministic-local", "ollama"] = "deterministic-local"
     answer_model: str = "atlas-local-grounded-generator"
     answer_model_version: str = "2026-08-28"
     answer_prompt_version: str = "phase6-grounded-answer-v1"
     answer_max_context_items: int = 5
     answer_max_context_chars: int = 2_400
     answer_max_output_chars: int = 1_200
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_timeout_seconds: float = 60.0
     security_rate_window_seconds: int = 60
     security_search_requests_per_window: int = 60
     security_answer_requests_per_window: int = 30

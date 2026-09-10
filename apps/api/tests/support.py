@@ -21,6 +21,7 @@ def make_settings() -> Settings:
         object_store_root=".local-object-store-test",
         upload_signing_secret="atlas-phase2-test-upload-signing-secret",  # noqa: S106
         ops_internal_token="atlas-phase11-test-ops-internal-token",  # noqa: S106
+        answer_provider="deterministic-local",
     )
 
 

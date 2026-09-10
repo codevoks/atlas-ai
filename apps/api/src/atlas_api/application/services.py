@@ -25,6 +25,7 @@ from atlas_api.application.generation import (
     ContextBuilder,
     DeterministicLocalGenerator,
     DeterministicReranker,
+    OllamaGenerator,
 )
 from atlas_api.application.ports import (
     AnswerRunRecord,
@@ -1357,7 +1358,11 @@ class AnswerService:
         self._search = SemanticSearchService(transaction_factory, settings)
         self._reranker = DeterministicReranker()
         self._context_builder = ContextBuilder(settings)
-        self._generator = DeterministicLocalGenerator(settings)
+        self._generator = (
+            OllamaGenerator(settings)
+            if settings.answer_provider == "ollama"
+            else DeterministicLocalGenerator(settings)
+        )
         self._citation_validator = CitationValidator()
         self._security = SecurityService(transaction_factory, settings)
 
